@@ -5,6 +5,7 @@ from .base_model import BaseModel
 from utils.registry import MODEL_REGISTRY
 from utils.tensor_util import to_device
 from utils.fmap_util import nn_query, fmap2pointmap
+import time
 
 
 @MODEL_REGISTRY.register()
@@ -13,6 +14,11 @@ class FMNetModel(BaseModel):
         self.with_refine = opt.get('refine', -1)
         self.partial = opt.get('partial', False)
         self.non_isometric = opt.get('non-isometric', False)
+
+        self.use_graph_laplacian_DINO = opt.get('basis', {}).get('use_graph_laplacian_DINO', False)
+        self.use_LBO = opt.get('basis', {}).get('use_LBO', False)
+        self.use_pca_DINO = opt.get('basis', {}).get('use_pca_DINO', False)
+
         if self.with_refine > 0:
             opt['is_train'] = True
         super(FMNetModel, self).__init__(opt)
@@ -22,29 +28,91 @@ class FMNetModel(BaseModel):
         data_x, data_y = to_device(data['first'], self.device), to_device(data['second'], self.device)
 
         # feature extractor for mesh
-        feat_x = self.networks['feature_extractor'](data_x['verts'], data_x['faces'])  # [B, Nx, C]
-        feat_y = self.networks['feature_extractor'](data_y['verts'], data_y['faces'])  # [B, Ny, C]
+        if 'faces' in data_x.keys(): # using mesh setting
+            feat_x = self.networks['feature_extractor'](data_x['verts'], data_x['faces'])  # [B, Nx, C]
+            feat_y = self.networks['feature_extractor'](data_y['verts'], data_y['faces'])  # [B, Ny, C]
+        else: # using pcd setting
+            # print('12232323', data_x['verts'].shape)
+            feat_x = self.networks['feature_extractor'](data_x['verts'], None)  # [B, Nx, C]
+            feat_y = self.networks['feature_extractor'](data_y['verts'], None)  # [B, Ny, C]
 
-        # get spectral operators
-        evals_x = data_x['evals']
-        evals_y = data_y['evals']
-        evecs_x = data_x['evecs']
-        evecs_y = data_y['evecs']
-        evecs_trans_x = data_x['evecs_trans']  # [B, K, Nx]
-        evecs_trans_y = data_y['evecs_trans']  # [B, K, Ny]
+        if self.use_LBO:
+            # get spectral operators
+            evals_x = data_x['evals']
+            evals_y = data_y['evals']
+            evecs_x = data_x['evecs']
+            evecs_y = data_y['evecs']
+            evecs_trans_x = data_x['evecs_trans']  # [B, K, Nx]
+            evecs_trans_y = data_y['evecs_trans']  # [B, K, Ny]
 
-        Cxy, Cyx = self.networks['fmap_net'](feat_x, feat_y, evals_x, evals_y, evecs_trans_x, evecs_trans_y)
+            Cxy, Cyx = self.networks['fmap_net'](feat_x, feat_y, evals_x, evals_y, evecs_trans_x, evecs_trans_y)
 
-        self.loss_metrics = self.losses['surfmnet_loss'](Cxy, Cyx, evals_x, evals_y)
-        Pxy, Pyx = self.compute_permutation_matrix(feat_x, feat_y, bidirectional=True)
+            self.loss_metrics = self.losses['surfmnet_loss'](Cxy, Cyx, evals_x, evals_y)
+            Pxy, Pyx = self.compute_permutation_matrix(feat_x, feat_y, bidirectional=True)
 
-        # compute C
-        Cxy_est = torch.bmm(evecs_trans_y, torch.bmm(Pyx, evecs_x))
+            # compute C
+            Cxy_est = torch.bmm(evecs_trans_y, torch.bmm(Pyx, evecs_x))
 
-        self.loss_metrics['l_align'] = self.losses['align_loss'](Cxy, Cxy_est)
-        if not self.partial:
-            Cyx_est = torch.bmm(evecs_trans_x, torch.bmm(Pxy, evecs_y))
-            self.loss_metrics['l_align'] += self.losses['align_loss'](Cyx, Cyx_est)
+            self.loss_metrics['l_align'] = self.losses['align_loss'](Cxy, Cxy_est)
+            if not self.partial:
+                Cyx_est = torch.bmm(evecs_trans_x, torch.bmm(Pxy, evecs_y))
+                self.loss_metrics['l_align'] += self.losses['align_loss'](Cyx, Cyx_est)
+
+
+        elif self.use_graph_laplacian_DINO:
+            gl_evecs_x = data_x['gl_feat']
+            gl_evecs_x = torch.flip(gl_evecs_x, dims=[2])  # Reversing along the third dimension, we flip here due to the pca eigenvectors are ordered from large to small
+            gl_evecs_y = data_y['gl_feat']
+            gl_evecs_y = torch.flip(gl_evecs_y, dims=[2])  # Reversing along the third dimension
+
+            gl_evals_x = data_x['gl_eval']
+            gl_evals_x = torch.flip(gl_evals_x, dims=[1])
+            gl_evals_y = data_y['gl_eval']
+            gl_evals_y = torch.flip(gl_evals_y, dims=[1])
+
+            gl_evecs_trans_x = gl_evecs_x.transpose(2, 1)
+            gl_evecs_trans_y = gl_evecs_y.transpose(2, 1)
+
+            Cxy, Cyx = self.networks['fmap_net'](feat_x, feat_y, gl_evals_x, gl_evals_y, gl_evecs_trans_x,
+                                                 gl_evecs_trans_y)
+
+            self.loss_metrics = self.losses['surfmnet_loss'](Cxy, Cyx, gl_evals_x, gl_evals_y)
+            Pxy, Pyx = self.compute_permutation_matrix(feat_x, feat_y, bidirectional=True)
+
+            # compute C
+            Cxy_est = torch.bmm(gl_evecs_trans_y, torch.bmm(Pyx, gl_evecs_x))
+
+            self.loss_metrics['l_align'] = self.losses['align_loss'](Cxy, Cxy_est)
+            if not self.partial:
+                Cyx_est = torch.bmm(gl_evecs_trans_x, torch.bmm(Pxy, gl_evecs_y))
+                self.loss_metrics['l_align'] += self.losses['align_loss'](Cyx, Cyx_est)
+
+        elif self.use_pca_DINO:
+            pca_evecs_x = data_x['pca_feat']
+            pca_evecs_x = torch.flip(pca_evecs_x, dims=[2])  # Reversing along the third dimension, we flip here due to the pca eigenvectors are ordered from large to small
+            pca_evecs_y = data_y['pca_feat']
+            pca_evecs_y = torch.flip(pca_evecs_y, dims=[2])  # Reversing along the third dimension
+
+            pca_evals_x = data_x['pca_eval']
+            pca_evals_x = torch.flip(pca_evals_x, dims=[1])
+            pca_evals_y = data_y['pca_eval']
+            pca_evals_y = torch.flip(pca_evals_y, dims=[1])
+
+            pca_evecs_trans_x = pca_evecs_x.transpose(2, 1)
+            pca_evecs_trans_y = pca_evecs_y.transpose(2, 1)
+
+            Cxy, Cyx = self.networks['fmap_net'](feat_x, feat_y, pca_evals_x, pca_evals_y, pca_evecs_trans_x, pca_evecs_trans_y)
+
+            self.loss_metrics = self.losses['surfmnet_loss'](Cxy, Cyx, pca_evals_x, pca_evals_y)
+            Pxy, Pyx = self.compute_permutation_matrix(feat_x, feat_y, bidirectional=True)
+
+            # compute C
+            Cxy_est = torch.bmm(pca_evecs_trans_y, torch.bmm(Pyx, pca_evecs_x))
+
+            self.loss_metrics['l_align'] = self.losses['align_loss'](Cxy, Cxy_est)
+            if not self.partial:
+                Cyx_est = torch.bmm(pca_evecs_trans_x, torch.bmm(Pxy, pca_evecs_y))
+                self.loss_metrics['l_align'] += self.losses['align_loss'](Cyx, Cyx_est)
 
         if 'dirichlet_loss' in self.losses:
             Lx, Ly = data_x['L'], data_y['L']
@@ -72,31 +140,55 @@ class FMNetModel(BaseModel):
         feat_y = self.networks['feature_extractor'](data_y['verts'], data_y.get('faces'))
 
         # get spectral operators
-        evecs_x = data_x['evecs'].squeeze()
-        evecs_y = data_y['evecs'].squeeze()
-        evecs_trans_x = data_x['evecs_trans'].squeeze()
-        evecs_trans_y = data_y['evecs_trans'].squeeze()
+        if self.use_LBO:
+            evecs_x = data_x['evecs'].squeeze()
+            evecs_y = data_y['evecs'].squeeze()
+            evecs_trans_x = data_x['evecs_trans'].squeeze()
+            evecs_trans_y = data_y['evecs_trans'].squeeze()
+        elif self.use_pca_DINO:
+            evecs_x = data_x['pca_feat'].squeeze()
+            evecs_y = data_y['pca_feat'].squeeze()
+            evecs_trans_x = evecs_x.squeeze()
+            evecs_trans_y = evecs_y.squeeze()
+        elif self.use_graph_laplacian_DINO:
+            evecs_x = data_x['gl_feat'].squeeze()
+            evecs_y = data_y['gl_feat'].squeeze()
+            evecs_trans_x = evecs_x.transpose(1, 0).squeeze()
+            evecs_trans_y = evecs_y.transpose(1, 0).squeeze()
 
-        if self.non_isometric:
-            feat_x = F.normalize(feat_x, dim=-1, p=2)
-            feat_y = F.normalize(feat_y, dim=-1, p=2)
+        # if self.non_isometric:
+        # Here we just only use nn_query to get the correspondance for a fair comparision
+        feat_x = F.normalize(feat_x, dim=-1, p=2)
+        feat_y = F.normalize(feat_y, dim=-1, p=2)
 
-            # nearest neighbour query
-            p2p = nn_query(feat_x, feat_y).squeeze()
+        # nearest neighbour query
+        p2p = nn_query(feat_x, feat_y).squeeze()
+        # print('!!!!', p2p.shape)
 
-            # compute Pyx from functional map
-            Cxy = evecs_trans_y @ evecs_x[p2p]
-            Pyx = evecs_y @ Cxy @ evecs_trans_x
-        else:
-            # compute Pxy
-            Pyx = self.compute_permutation_matrix(feat_y, feat_x, bidirectional=False).squeeze()
-            Cxy = evecs_trans_y @ (Pyx @ evecs_x)
+        # compute Pyx from functional map, here the Cxy and Pyx are not used in the next step, only p2p is used. So we use the defult settings here
+        Cxy = evecs_trans_y @ evecs_x[p2p]
+        Pyx = evecs_y @ Cxy @ evecs_trans_x
 
-            # convert functional map to point-to-point map
-            p2p = fmap2pointmap(Cxy, evecs_x, evecs_y)
-
-            # compute Pyx from functional map
-            Pyx = evecs_y @ Cxy @ evecs_trans_x
+        # if self.non_isometric:
+        #     feat_x = F.normalize(feat_x, dim=-1, p=2)
+        #     feat_y = F.normalize(feat_y, dim=-1, p=2)
+        #
+        #     # nearest neighbour query
+        #     p2p = nn_query(feat_x, feat_y).squeeze()
+        #
+        #     # compute Pyx from functional map
+        #     Cxy = evecs_trans_y @ evecs_x[p2p]
+        #     Pyx = evecs_y @ Cxy @ evecs_trans_x
+        # else:
+        #     # compute Pxy
+        #     Pyx = self.compute_permutation_matrix(feat_y, feat_x, bidirectional=False).squeeze()
+        #     Cxy = evecs_trans_y @ (Pyx @ evecs_x)
+        #
+        #     # convert functional map to point-to-point map
+        #     p2p = fmap2pointmap(Cxy, evecs_x, evecs_y)
+        #
+        #     # compute Pyx from functional map
+        #     Pyx = evecs_y @ Cxy @ evecs_trans_x
 
         # finish record
         timer.record()

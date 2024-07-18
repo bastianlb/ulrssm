@@ -7,9 +7,12 @@ from glob import glob
 import torch
 from torch.utils.data import Dataset
 
-from utils.shape_util import read_shape
-from utils.geometry_util import get_operators
-from utils.registry import DATASET_REGISTRY
+from ulrssm.utils.shape_util import read_shape
+from ulrssm.utils.geometry_util import get_operators
+from ulrssm.utils.registry import DATASET_REGISTRY
+
+from pathlib import Path
+import potpourri3d as pp3d
 
 
 def sort_list(l):
@@ -22,9 +25,9 @@ def sort_list(l):
 def get_spectral_ops(item, num_evecs, cache_dir=None):
     if not os.path.isdir(cache_dir):
         os.makedirs(cache_dir)
-    _, mass, L, evals, evecs, _, _ = get_operators(item['verts'], item.get('faces'),
+    _, mass, L, evals, evecs, _, _ = get_operators(item['verts'], None,
                                                    k=num_evecs,
-                                                   cache_dir=cache_dir)
+                                                   cache_dir=cache_dir)  # 在不同的阶段读取不同的东西
     evecs_trans = evecs.T * mass[None]
     item['evecs'] = evecs[:, :num_evecs]
     item['evecs_trans'] = evecs_trans[:num_evecs]
@@ -37,9 +40,10 @@ def get_spectral_ops(item, num_evecs, cache_dir=None):
 
 class SingleShapeDataset(Dataset):
     def __init__(self,
-                 data_root, return_faces=True,
+                 data_root, return_faces=False,
                  return_evecs=True, num_evecs=200,
-                 return_corr=True, return_dist=False):
+                 return_corr=False, return_dist=False, return_pca=False, return_gl=False,
+                 pca_feature_path=None, gl_feature_path=None, sample_and_indices=None):
         """
         Single Shape Dataset
 
@@ -60,17 +64,42 @@ class SingleShapeDataset(Dataset):
         self.return_evecs = return_evecs
         self.return_corr = return_corr
         self.return_dist = return_dist
+        self.return_pca = return_pca
+        self.return_gl = return_gl
         self.num_evecs = num_evecs
+        self.sample_and_indices = sample_and_indices
+
+        if self.return_pca:
+            self.pca_evals_path = pca_feature_path['evals']
+            self.pca_evecs_path = pca_feature_path['evecs']
+        if self.return_gl:
+            self.gl_evals_path = gl_feature_path['evals']
+            self.gl_evecs_path = gl_feature_path['evecs']
 
         self.off_files = []
+        self.pca_feature_file = [] if self.return_pca else None
+        self.gl_feature_file = [] if self.return_gl else None
+        self.pca_evals_file = [] if self.return_pca else None
+        self.gl_evals_file = [] if self.return_gl else None
         self.corr_files = [] if self.return_corr else None
         self.dist_files = [] if self.return_dist else None
+
+        self.sampled = self.sample_and_indices['sampled'] if 'sampled' in self.sample_and_indices and \
+                                                             self.sample_and_indices['sampled'] is not None else None
+        # print('sampled!!!!', self.sampled)
+        self.index_path = self.sample_and_indices[
+            'indices_relative_path'] if 'indices_relative_path' in self.sample_and_indices and self.sample_and_indices[
+            'indices_relative_path'] is not None else None
 
         self._init_data()
 
         # sanity check
         self._size = len(self.off_files)
         assert self._size != 0
+        if self.return_pca:
+            assert self._size == len(self.pca_feature_file)
+        if self.return_gl:
+            assert self._size == len(self.gl_feature_file)
 
         if self.return_dist:
             assert self._size == len(self.dist_files)
@@ -82,7 +111,33 @@ class SingleShapeDataset(Dataset):
         # check the data path contains .off files
         off_path = os.path.join(self.data_root, 'off')
         assert os.path.isdir(off_path), f'Invalid path {off_path} not containing .off files'
-        self.off_files = sort_list(glob(f'{off_path}/*.off'))
+        
+        self.off_files = sort_list(glob(f'{off_path}/*'))  # 获取并排序所有文件
+        self.off_files = [f for f in self.off_files if f.endswith('.off') or f.endswith('.ply')]  # 过滤出.off和.ply文件
+
+        if self.return_pca:
+            pca_feature_path = os.path.join(self.data_root, self.pca_evecs_path)
+            assert os.path.isdir(pca_feature_path), f'Invalid path {pca_feature_path} not containing .npy files'
+            self.pca_feature_file = sorted(
+                [os.path.join(pca_feature_path, f) for f in os.listdir(pca_feature_path) if f.endswith('.npy')],
+                key=lambda x: int(Path(x).stem.split('_')[-1]))
+
+            pca_evals_path = os.path.join(self.data_root, self.pca_evals_path)
+            self.pca_evals_file = sorted(
+                [os.path.join(pca_evals_path, f) for f in os.listdir(pca_evals_path) if f.endswith('.npy')],
+                key=lambda x: int(Path(x).stem.split('_')[-1]))
+
+        if self.return_gl:
+            gl_feature_path = os.path.join(self.data_root, self.gl_evecs_path)
+            assert os.path.isdir(gl_feature_path), f'Invalid path {gl_feature_path} not containing .npy files'
+            self.gl_feature_file = sorted(
+                [os.path.join(gl_feature_path, f) for f in os.listdir(gl_feature_path) if f.endswith('.npy')],
+                key=lambda x: int(Path(x).stem.split('_')[-1]))
+
+            gl_evals_path = os.path.join(self.data_root, self.gl_evals_path)
+            self.gl_evals_file = sorted(
+                [os.path.join(gl_evals_path, f) for f in os.listdir(gl_evals_path) if f.endswith('.npy')],
+                key=lambda x: int(Path(x).stem.split('_')[-1]))
 
         # check the data path contains .vts files
         if self.return_corr:
@@ -96,6 +151,19 @@ class SingleShapeDataset(Dataset):
             assert os.path.isdir(dist_path), f'Invalid path {dist_path} not containing .mat files'
             self.dist_files = sort_list(glob(f'{dist_path}/*.mat'))
 
+        if self.sampled:
+            self.index_path = os.path.join(self.data_root, self.index_path)
+            if os.path.exists(self.index_path):
+                file_extension = os.path.splitext(self.index_path)[1]
+                if file_extension == '.npy':
+                    self.index = torch.from_numpy(np.load(self.index_path))
+                elif file_extension == '.pt':
+                    self.index = torch.load(self.index_path)
+                else:
+                    raise ValueError(f"Unsupported file type: {file_extension}")
+            else:
+                raise FileNotFoundError(f"The file {self.index_path} does not exist.")
+
     def __getitem__(self, index):
         item = dict()
 
@@ -105,24 +173,49 @@ class SingleShapeDataset(Dataset):
         item['name'] = basename
 
         # get vertices and faces
-        verts, faces = read_shape(off_file)
-        item['verts'] = torch.from_numpy(verts).float()
+        # verts, faces = read_shape(off_file)
+        verts, faces = pp3d.read_mesh(off_file)
+        item['verts'] = torch.from_numpy(np.ascontiguousarray(verts)).float()
+        if self.sampled:
+            item['verts'] = item['verts'][self.index]
         if self.return_faces:
-            item['faces'] = torch.from_numpy(faces).long()
+            item['faces'] = torch.from_numpy(np.ascontiguousarray(faces)).long()
 
         # get eigenfunctions/eigenvalues
         if self.return_evecs:
-            item = get_spectral_ops(item, num_evecs=self.num_evecs, cache_dir=os.path.join(self.data_root, 'diffusion'))
+            if self.sampled:
+                #need to change here
+                item = get_spectral_ops(item, num_evecs=self.num_evecs, cache_dir=os.path.join(self.data_root, 'diffusion_pcd_1024')) #need to change here
+            else:
+                #need to change here
+                item = get_spectral_ops(item, num_evecs=self.num_evecs, cache_dir=os.path.join(self.data_root, 'diffusion')) 
+
+        if self.return_pca:
+            feature = np.load(self.pca_feature_file[index])
+            evals = np.load(self.pca_evals_file[index])
+            item['pca_feat'] = torch.from_numpy(feature).float()
+            item['pca_eval'] = torch.from_numpy(evals).float()
+
+        if self.return_gl:
+            feature = np.load(self.gl_feature_file[index])
+            evals = np.load(self.gl_evals_file[index])
+            item['gl_feat'] = torch.from_numpy(feature).float()
+            item['gl_eval'] = torch.from_numpy(evals).float()
 
         # get geodesic distance matrix
         if self.return_dist:
             mat = sio.loadmat(self.dist_files[index])
             item['dist'] = torch.from_numpy(mat['dist']).float()
-
+            if self.sampled:
+                item['dist'] = item['dist'][self.index, :][:, self.index] #TODO:Here we still use mesh version to calculate the dist(also possible to change to pcd, but currently using mesh to calculate this)
+                # print('Sampled distance mat shape', item['dist'].shape)
         # get correspondences
         if self.return_corr:
             corr = np.loadtxt(self.corr_files[index], dtype=np.int32) - 1  # minus 1 to start from 0
-            item['corr'] = torch.from_numpy(corr).long()
+        else:
+            corr = np.arange(item['verts'].shape[0])
+        item['corr'] = torch.from_numpy(corr).long()
+        # print(item['corr'].shape)
 
         return item
 
@@ -135,10 +228,11 @@ class SingleFaustDataset(SingleShapeDataset):
     def __init__(self, data_root,
                  phase, return_faces=True,
                  return_evecs=True, num_evecs=200,
-                 return_corr=True, return_dist=False):
+                 return_corr=True, return_dist=False, return_pca=False, return_gl=False,
+                 pca_feature_path=None, gl_feature_path=None, sample_and_indices=None):
         super(SingleFaustDataset, self).__init__(data_root, return_faces,
                                                  return_evecs, num_evecs,
-                                                 return_corr, return_dist)
+                                                 return_corr, return_dist, return_pca, return_gl, pca_feature_path, gl_feature_path, sample_and_indices)
         assert phase in ['train', 'test', 'full'], f'Invalid phase {phase}, only "train" or "test" or "full"'
         assert len(self) == 100, f'FAUST dataset should contain 100 human body shapes, but get {len(self)}.'
         if phase == 'train':
@@ -148,6 +242,12 @@ class SingleFaustDataset(SingleShapeDataset):
                 self.corr_files = self.corr_files[:80]
             if self.dist_files:
                 self.dist_files = self.dist_files[:80]
+            if self.pca_feature_file:
+                self.pca_feature_file = self.pca_feature_file[:80]
+                self.pca_evals_file = self.pca_evals_file[:80]
+            if self.gl_feature_file:
+                self.gl_feature_file = self.gl_feature_file[:80]
+                self.gl_evals_file = self.gl_evals_file[:80]
             self._size = 80
         elif phase == 'test':
             if self.off_files:
@@ -156,6 +256,12 @@ class SingleFaustDataset(SingleShapeDataset):
                 self.corr_files = self.corr_files[80:]
             if self.dist_files:
                 self.dist_files = self.dist_files[80:]
+            if self.pca_feature_file:
+                self.pca_feature_file = self.pca_feature_file[80:]
+                self.pca_evals_file = self.pca_evals_file[80:]
+            if self.gl_feature_file:
+                self.gl_feature_file = self.gl_feature_file[80:]
+                self.gl_evals_file = self.gl_evals_file[80:]
             self._size = 20
 
 
@@ -164,10 +270,10 @@ class SingleScapeDataset(SingleShapeDataset):
     def __init__(self, data_root,
                  phase, return_faces=True,
                  return_evecs=True, num_evecs=200,
-                 return_corr=True, return_dist=False):
+                 return_corr=True, return_dist=False, return_pca=False, return_gl=False, sample_and_indices=None):
         super(SingleScapeDataset, self).__init__(data_root, return_faces,
                                                  return_evecs, num_evecs,
-                                                 return_corr, return_dist)
+                                                 return_corr, return_dist, return_pca, return_gl, sample_and_indices)
         assert phase in ['train', 'test', 'full'], f'Invalid phase {phase}, only "train" or "test" or "full"'
         assert len(self) == 71, f'FAUST dataset should contain 71 human body shapes, but get {len(self)}.'
         if phase == 'train':
@@ -193,8 +299,8 @@ class SingleShrec19Dataset(SingleShapeDataset):
     def __init__(self, data_root,
                  return_faces=True,
                  return_evecs=True, num_evecs=200,
-                 return_dist=False):
-        super(SingleShrec19Dataset, self).__init__(data_root, return_faces, return_evecs, num_evecs, False, return_dist)
+                 return_dist=False, return_pca=False, return_gl=False, sample_and_indices=None):
+        super(SingleShrec19Dataset, self).__init__(data_root, return_faces, return_evecs, num_evecs, False, return_dist, return_pca, return_gl, sample_and_indices)
 
 
 @DATASET_REGISTRY.register()
@@ -202,11 +308,15 @@ class SingleSmalDataset(SingleShapeDataset):
     def __init__(self, data_root, phase='train', category=True,
                  return_faces=True,
                  return_evecs=True, num_evecs=200,
-                 return_corr=True, return_dist=False):
+                 return_corr=True, return_dist=False, return_pca=False, return_gl=False, sample_and_indices=None):
+        '''
+        TODO: should also modify this part as before for new input variables
+        '''
+        
         self.phase = phase
         self.category = category
         super(SingleSmalDataset, self).__init__(data_root, return_faces, return_evecs, num_evecs,
-                                                return_corr, return_dist)
+                                                return_corr, return_dist, return_pca, return_gl, sample_and_indices)
 
     def _init_data(self):
         if self.category:
@@ -229,12 +339,12 @@ class SingleDT4DDataset(SingleShapeDataset):
     def __init__(self, data_root, phase='train',
                  return_faces=True,
                  return_evecs=True, num_evecs=200,
-                 return_corr=True, return_dist=False):
+                 return_corr=True, return_dist=False, return_pca=False, return_gl=False, sample_and_indices=None):
         self.phase = phase
         self.ignored_categories = ['pumpkinhulk']
         super(SingleDT4DDataset, self).__init__(data_root, return_faces,
                                                 return_evecs, num_evecs,
-                                                return_corr, return_dist)
+                                                return_corr, return_dist, return_pca, return_gl, sample_and_indices)
 
     def _init_data(self):
         with open(os.path.join(self.data_root, f'{self.phase}.txt'), 'r') as f:
@@ -253,18 +363,18 @@ class SingleDT4DDataset(SingleShapeDataset):
 class SingleShrec20Dataset(SingleShapeDataset):
     def __init__(self, data_root,
                  return_faces=True,
-                 return_evecs=True, num_evecs=200):
+                 return_evecs=True, num_evecs=200, return_pca=False, return_gl=False, sample_and_indices=None):
         super(SingleShrec20Dataset, self).__init__(data_root, return_faces,
-                                                   return_evecs, num_evecs, False, False)
+                                                   return_evecs, num_evecs, False, False, return_pca, return_gl, sample_and_indices)
 
 
 @DATASET_REGISTRY.register()
 class SingleTopKidsDataset(SingleShapeDataset):
     def __init__(self, data_root,
                  return_faces=True,
-                 return_evecs=True, num_evecs=200, return_dist=False):
+                 return_evecs=True, num_evecs=200, return_dist=False, return_pca=False, return_gl=False, sample_and_indices=None):
         super(SingleTopKidsDataset, self).__init__(data_root, return_faces,
-                                                   return_evecs, num_evecs, False, return_dist)
+                                                   return_evecs, num_evecs, False, return_dist, return_pca, return_gl, sample_and_indices)
 
 
 class PairShapeDataset(Dataset):
@@ -297,9 +407,9 @@ class PairShapeDataset(Dataset):
 class PairDataset(PairShapeDataset):
     def __init__(self, data_root, return_faces=True,
                  return_evecs=True, num_evecs=200,
-                 return_corr=True, return_dist=False):
+                 return_corr=True, return_dist=False, return_pca=False, return_gl=True, pca_feature_path=None, gl_feature_path=None, sample_and_indices=None):
         dataset = SingleShapeDataset(data_root, return_faces, return_evecs, num_evecs,
-                                     return_corr, return_dist)
+                                     return_corr, return_dist, return_pca, return_gl, pca_feature_path, gl_feature_path, sample_and_indices)
         super(PairDataset, self).__init__(dataset)
 
 
@@ -308,10 +418,10 @@ class PairFaustDataset(PairShapeDataset):
     def __init__(self, data_root,
                  phase, return_faces=True,
                  return_evecs=True, num_evecs=200,
-                 return_corr=True, return_dist=False):
+                 return_corr=True, return_dist=False, return_pca=False, return_gl=False, pca_relative_root_feature_path=None, gl_relative_root_feature_path=None, sample_and_indices=None):
         dataset = SingleFaustDataset(data_root, phase, return_faces,
                                      return_evecs, num_evecs,
-                                     return_corr, return_dist)
+                                     return_corr, return_dist, return_pca, return_gl, pca_relative_root_feature_path, gl_relative_root_feature_path, sample_and_indices)
         super(PairFaustDataset, self).__init__(dataset)
 
 
@@ -320,10 +430,10 @@ class PairScapeDataset(PairShapeDataset):
     def __init__(self, data_root,
                  phase, return_faces=True,
                  return_evecs=True, num_evecs=200,
-                 return_corr=True, return_dist=False):
+                 return_corr=True, return_dist=False, return_pca=False, return_gl=True, pca_feature_path=None, gl_feature_path=None, sample_and_indices=None):
         dataset = SingleScapeDataset(data_root, phase, return_faces,
                                      return_evecs, num_evecs,
-                                     return_corr, return_dist)
+                                     return_corr, return_dist, return_pca, return_gl, pca_feature_path, gl_feature_path, sample_and_indices)
         super(PairScapeDataset, self).__init__(dataset)
 
 
@@ -332,9 +442,9 @@ class PairShrec19Dataset(Dataset):
     def __init__(self, data_root, phase='test',
                  return_faces=True,
                  return_evecs=True, num_evecs=200,
-                 return_dist=False):
+                 return_dist=False, return_pca=False, return_gl=True, pca_feature_path=None, gl_feature_path=None, sample_and_indices=None):
         assert phase in ['train', 'test'], f'Invalid phase: {phase}'
-        self.dataset = SingleShrec19Dataset(data_root, return_faces, return_evecs, num_evecs, return_dist)
+        self.dataset = SingleShrec19Dataset(data_root, return_faces, return_evecs, num_evecs, return_dist, return_pca, return_gl, pca_feature_path, gl_feature_path, sample_and_indices)
         self.phase = phase
         if phase == 'test':
             corr_path = os.path.join(data_root, 'corres')
@@ -376,10 +486,10 @@ class PairSmalDataset(PairShapeDataset):
     def __init__(self, data_root, phase='train',
                  category=True, return_faces=True,
                  return_evecs=True, num_evecs=200,
-                 return_corr=True, return_dist=False):
+                 return_corr=True, return_dist=False, return_pca=False, return_gl=True, pca_feature_path=None, gl_feature_path=None, sample_and_indices=None):
         dataset = SingleSmalDataset(data_root, phase, category, return_faces,
                                     return_evecs, num_evecs,
-                                    return_corr, return_dist)
+                                    return_corr, return_dist, return_pca, return_gl, pca_feature_path, gl_feature_path, sample_and_indices)
         super(PairSmalDataset, self).__init__(dataset=dataset)
 
 
@@ -388,10 +498,10 @@ class PairDT4DDataset(PairShapeDataset):
     def __init__(self, data_root, phase='train',
                  inter_class=False, return_faces=True,
                  return_evecs=True, num_evecs=200,
-                 return_corr=True, return_dist=False):
+                 return_corr=True, return_dist=False, return_pca=False, return_gl=True, pca_feature_path=None, gl_feature_path=None, sample_and_indices=None):
         dataset = SingleDT4DDataset(data_root, phase, return_faces,
                                     return_evecs, num_evecs,
-                                    return_corr, return_dist)
+                                    return_corr, return_dist, return_pca, return_gl, pca_feature_path, gl_feature_path, sample_and_indices)
         super(PairDT4DDataset, self).__init__(dataset=dataset)
         self.inter_class = inter_class
         self.combinations = []
@@ -434,8 +544,8 @@ class PairDT4DDataset(PairShapeDataset):
 class PairShrec20Dataset(PairShapeDataset):
     def __init__(self, data_root,
                  return_faces=True,
-                 return_evecs=True, num_evecs=120):
-        dataset = SingleShrec20Dataset(data_root, return_faces, return_evecs, num_evecs)
+                 return_evecs=True, num_evecs=120, return_pca=False, return_gl=True, pca_feature_path=None, gl_feature_path=None, sample_and_indices=None):
+        dataset = SingleShrec20Dataset(data_root, return_faces, return_evecs, num_evecs, return_pca, return_gl, pca_feature_path, gl_feature_path, sample_and_indices)
         super(PairShrec20Dataset, self).__init__(dataset=dataset)
 
 
@@ -454,7 +564,7 @@ class PairShrec16Dataset(Dataset):
                  categories=None,
                  cut_type='cuts', return_faces=True,
                  return_evecs=True, num_evecs=200,
-                 return_corr=False, return_dist=False):
+                 return_corr=False, return_dist=False, return_pca=False, return_gl=True, pca_feature_path=None, gl_feature_path=None, sample_and_indices=None):
         assert cut_type in ['cuts', 'holes'], f'Unrecognized cut type: {cut_type}'
 
         categories = self.categories if categories is None else categories
@@ -543,7 +653,7 @@ class PairShrec16Dataset(Dataset):
         # get eigenfunctions/eigenvalues
         if self.return_evecs:
             full_data = get_spectral_ops(full_data, self.num_evecs, cache_dir=os.path.join(self.data_root, 'null',
-                                                                                           'diffusion'))
+                                                                                           'diffusion')) #need to change here!!!
 
         # get geodesic distance matrix
         if self.return_dist:
@@ -584,9 +694,9 @@ class PairTopKidsDataset(Dataset):
     def __init__(self, data_root, phase='train',
                  return_faces=True,
                  return_evecs=True, num_evecs=200,
-                 return_dist=False):
+                 return_dist=False, return_pca=False, return_gl=True, pca_feature_path=None, gl_feature_path=None, sample_and_indices=None):
         assert phase in ['train', 'test'], f'Invalid phase: {phase}'
-        self.dataset = SingleTopKidsDataset(data_root, return_faces, return_evecs, num_evecs, return_dist)
+        self.dataset = SingleTopKidsDataset(data_root, return_faces, return_evecs, num_evecs, return_dist, return_pca, return_gl, pca_feature_path, gl_feature_path, sample_and_indices)
         self.phase = phase
         if phase == 'test':
             corr_path = os.path.join(data_root, 'corres')
