@@ -9,6 +9,7 @@ import torch
 from .misc import make_exp_dirs, set_random_seed
 from .dist_util import get_dist_info, init_dist
 
+VALID_BASIS_TYPES = ['LBO', 'GRAPH_LAPLACIAN']
 
 def ordered_yaml():
     """Support OrderedDict for yaml.
@@ -126,7 +127,11 @@ def parse_options(root_path, is_train=True):
     # check sanity
     return_gl_train = opt.get('datasets', {}).get('train_dataset', {}).get('return_gl', None)
     return_gl_test = opt.get('datasets', {}).get('test_dataset', {}).get('return_gl', None)
-    use_graph_laplacian_DINO = opt.get('basis', {}).get('use_graph_laplacian_DINO', None)
+
+    basis = opt.get('basis', "LBO")
+    assert basis in VALID_BASIS_TYPES, f"Invalid basis type: {self.basis}, only supports {VALID_BASIS_TYPES}"
+    use_LBO = basis == 'LBO'
+    use_graph_laplacian_DINO = basis == 'GRAPH_LAPLACIAN'
 
     if return_gl_train != use_graph_laplacian_DINO:
         raise ValueError("Error: 'return_gl' in train_dataset and 'use_graph_laplacian_DINO' in basis must be the same")
@@ -134,8 +139,6 @@ def parse_options(root_path, is_train=True):
     if return_gl_test != use_graph_laplacian_DINO:
         raise ValueError("Error: 'return_gl' in test_dataset and 'use_graph_laplacian_DINO' in basis must be the same")
 
-    # 检查 use_graph_laplacian_DINO, use_LBO 和 use_pca_DINO 只有一个为 True
-    use_LBO = opt.get('basis', {}).get('use_LBO', None)
 
     if use_graph_laplacian_DINO is not None and use_LBO is not None:
         if sum([use_graph_laplacian_DINO, use_LBO]) != 1:
