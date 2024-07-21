@@ -7,6 +7,8 @@ from utils.tensor_util import to_device
 from utils.fmap_util import nn_query, fmap2pointmap
 import time
 
+VALID_BASIS_TYPES = ['LBO', 'GRAPH_LAPLACIAN']
+
 
 @MODEL_REGISTRY.register()
 class FMNetModel(BaseModel):
@@ -15,8 +17,10 @@ class FMNetModel(BaseModel):
         self.partial = opt.get('partial', False)
         self.non_isometric = opt.get('non-isometric', False)
 
-        self.use_graph_laplacian_DINO = opt.get('basis', {}).get('use_graph_laplacian_DINO', False)
-        self.use_LBO = opt.get('basis', {}).get('use_LBO', False)
+        self.basis = opt.get('basis', "LBO")
+        assert self.basis in VALID_BASIS_TYPES, f"Invalid basis type: {self.basis}, only supports {VALID_BASIS_TYPES}"
+        self.use_LBO = self.basis == 'LBO'
+        self.use_graph_laplacian_DINO = self.basis == 'GRAPH_LAPLACIAN'
 
         if self.with_refine > 0:
             opt['is_train'] = True
@@ -85,6 +89,8 @@ class FMNetModel(BaseModel):
             if not self.partial:
                 Cyx_est = torch.bmm(gl_evecs_trans_x, torch.bmm(Pxy, gl_evecs_y))
                 self.loss_metrics['l_align'] += self.losses['align_loss'](Cyx, Cyx_est)
+        else:
+            raise Exception("Must specify either use_LBO or use_graph_laplacian_DINO")
 
         if 'dirichlet_loss' in self.losses:
             Lx, Ly = data_x['L'], data_y['L']
