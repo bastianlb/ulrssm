@@ -3,6 +3,7 @@ import numpy as np
 import scipy.io as sio
 from itertools import product
 from glob import glob
+from pathlib import Path
 
 import torch
 from torch.utils.data import Dataset
@@ -11,13 +12,12 @@ from utils.shape_util import read_shape
 from utils.geometry_util import get_operators
 from utils.registry import DATASET_REGISTRY
 
-from pathlib import Path
 import potpourri3d as pp3d
 
 
 def sort_list(l):
     try:
-        return list(sorted(l, key=lambda x: int(re.search(r'\d+(?=\.)', x).group())))
+        return list(sorted(l, key=lambda x: int(re.search(r'\d+(?=\.)', str(x)).group())))
     except AttributeError:
         return sorted(l)
 
@@ -72,17 +72,17 @@ class SingleShapeDataset(Dataset):
             self.gl_path = gl_feature_path
 
         self.off_files = []
-        self.gl_feature_file = [] if self.return_gl else None
-        self.gl_evals_file = [] if self.return_gl else None
+        self.gl_feature_files = [] if self.return_gl else None
         self.corr_files = [] if self.return_corr else None
         self.dist_files = [] if self.return_dist else None
 
-        self.sampled = self.sample_and_indices['sampled'] if 'sampled' in self.sample_and_indices and \
-                                                             self.sample_and_indices['sampled'] is not None else None
-        # print('sampled!!!!', self.sampled)
-        self.index_path = self.sample_and_indices[
-            'indices_relative_path'] if 'indices_relative_path' in self.sample_and_indices and self.sample_and_indices[
-            'indices_relative_path'] is not None else None
+        if self.sample_and_indices and self.sample_and_indices.get('sampled') is not None:
+            self.sampled = self.sample_and_indices['sampled'] 
+            # print('sampled!!!!', self.sampled)
+            self.index_path = self.sample_and_indices['indices_relative_path'] if self.sample_and_indices.get('indices_relative_path') else None
+        else:
+            self.sampled = None
+            self.index_path = []
 
         self._init_data()
 
@@ -108,9 +108,8 @@ class SingleShapeDataset(Dataset):
 
         if self.return_gl:
             gl_feature_path = Path(self.data_root) / self.gl_path
-            self.gl_feature_files = sorted(
-                gl_feature_path.glob("*.pt")
-                # don't need fancy sort, they are already lexographic
+            self.gl_feature_files = sort_list(
+                gl_feature_path.glob("*.pt"),
             )
             assert gl_feature_path.exists() and len(self.gl_feature_files) > 0, f'Invalid path {gl_feature_path} does not contain any .pt files'
 
@@ -166,9 +165,12 @@ class SingleShapeDataset(Dataset):
                 item = get_spectral_ops(item, num_evecs=self.num_evecs, cache_dir=os.path.join(self.data_root, 'diffusion')) 
 
         if self.return_gl:
-            graph_data = torch.load(self.gl_feature_files[index])
+            gl_feature_file = self.gl_feature_files[index]
+            assert Path(off_file).name in gl_feature_file.name, f"The gl_feature_file {Path(off_file).name} does not match with the off file {gl_feature_file.name}"
+            graph_data = torch.load(gl_feature_file)
             item['gl_evecs'] = graph_data['evecs']
             item['gl_eval'] = graph_data['evals']
+            assert item['gl_evecs'].shape[0] == item['verts'].shape[0]
 
         # get geodesic distance matrix
         if self.return_dist:
@@ -210,9 +212,8 @@ class SingleFaustDataset(SingleShapeDataset):
                 self.corr_files = self.corr_files[:80]
             if self.dist_files:
                 self.dist_files = self.dist_files[:80]
-            if self.gl_feature_file:
-                self.gl_feature_file = self.gl_feature_file[:80]
-                self.gl_evals_file = self.gl_evals_file[:80]
+            if self.gl_feature_files:
+                self.gl_feature_files = self.gl_feature_files[:80]
             self._size = 80
         elif phase == 'test':
             if self.off_files:
@@ -221,9 +222,8 @@ class SingleFaustDataset(SingleShapeDataset):
                 self.corr_files = self.corr_files[80:]
             if self.dist_files:
                 self.dist_files = self.dist_files[80:]
-            if self.gl_feature_file:
-                self.gl_feature_file = self.gl_feature_file[80:]
-                self.gl_evals_file = self.gl_evals_file[80:]
+            if self.gl_feature_files:
+                self.gl_feature_files = self.gl_feature_files[80:]
             self._size = 20
 
 
@@ -358,6 +358,7 @@ class PairShapeDataset(Dataset):
         item = dict()
         item['first'] = self.dataset[first_index]
         item['second'] = self.dataset[second_index]
+        # print("processing shapes:", item['first']['name'], item['second']['name'])
 
         return item
 
