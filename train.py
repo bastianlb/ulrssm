@@ -6,13 +6,13 @@ from os import path as osp
 
 import torch.cuda
 
-from ulrssm.datasets import build_dataloader, build_dataset
-from ulrssm.datasets.data_sampler import EnlargedSampler
+from datasets import build_dataloader, build_dataset
+from datasets.data_sampler import EnlargedSampler
 
-from ulrssm.models import build_model
-from ulrssm.utils import (AvgTimer, MessageLogger, get_env_info, get_root_logger,
+from models import build_model
+from utils import (AvgTimer, MessageLogger, get_env_info, get_root_logger,
                    init_tb_logger)
-from ulrssm.utils.options import dict2str, parse_options
+from utils.options import dict2str, parse_options
 
 
 def init_tb_loggers(opt):

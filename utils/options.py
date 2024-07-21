@@ -134,23 +134,12 @@ def parse_options(root_path, is_train=True):
     if return_gl_test != use_graph_laplacian_DINO:
         raise ValueError("Error: 'return_gl' in test_dataset and 'use_graph_laplacian_DINO' in basis must be the same")
 
-    # 检查 return_pca 和 use_pca_DINO 是否一致
-    return_pca_train = opt.get('datasets', {}).get('train_dataset', {}).get('return_pca', None)
-    return_pca_test = opt.get('datasets', {}).get('test_dataset', {}).get('return_pca', None)
-    use_pca_DINO = opt.get('basis', {}).get('use_pca_DINO', None)
-
-    if return_pca_train != use_pca_DINO:
-        raise ValueError("Error: 'return_pca' in train_dataset and 'use_pca_DINO' in basis must be the same")
-
-    if return_pca_test != use_pca_DINO:
-        raise ValueError("Error: 'return_pca' in test_dataset and 'use_pca_DINO' in basis must be the same")
-
     # 检查 use_graph_laplacian_DINO, use_LBO 和 use_pca_DINO 只有一个为 True
     use_LBO = opt.get('basis', {}).get('use_LBO', None)
 
-    if use_graph_laplacian_DINO is not None and use_LBO is not None and use_pca_DINO is not None:
-        if sum([use_graph_laplacian_DINO, use_LBO, use_pca_DINO]) != 1:
-            raise ValueError("Error: Only one of 'use_graph_laplacian_DINO', 'use_LBO' and 'use_pca_DINO' can be True")
+    if use_graph_laplacian_DINO is not None and use_LBO is not None:
+        if sum([use_graph_laplacian_DINO, use_LBO]) != 1:
+            raise ValueError("Error: Only one of 'use_graph_laplacian_DINO', 'use_LBO' can be True")
 
     # set rank and world_size
     opt['rank'], opt['world_size'] = get_dist_info()

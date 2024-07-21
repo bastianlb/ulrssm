@@ -17,7 +17,6 @@ class FMNetModel(BaseModel):
 
         self.use_graph_laplacian_DINO = opt.get('basis', {}).get('use_graph_laplacian_DINO', False)
         self.use_LBO = opt.get('basis', {}).get('use_LBO', False)
-        self.use_pca_DINO = opt.get('basis', {}).get('use_pca_DINO', False)
 
         if self.with_refine > 0:
             opt['is_train'] = True
@@ -60,9 +59,9 @@ class FMNetModel(BaseModel):
 
 
         elif self.use_graph_laplacian_DINO:
-            gl_evecs_x = data_x['gl_feat']
+            gl_evecs_x = data_x['gl_evecs']
             gl_evecs_x = torch.flip(gl_evecs_x, dims=[2])  # Reversing along the third dimension, we flip here due to the pca eigenvectors are ordered from large to small
-            gl_evecs_y = data_y['gl_feat']
+            gl_evecs_y = data_y['gl_evecs']
             gl_evecs_y = torch.flip(gl_evecs_y, dims=[2])  # Reversing along the third dimension
 
             gl_evals_x = data_x['gl_eval']
@@ -85,33 +84,6 @@ class FMNetModel(BaseModel):
             self.loss_metrics['l_align'] = self.losses['align_loss'](Cxy, Cxy_est)
             if not self.partial:
                 Cyx_est = torch.bmm(gl_evecs_trans_x, torch.bmm(Pxy, gl_evecs_y))
-                self.loss_metrics['l_align'] += self.losses['align_loss'](Cyx, Cyx_est)
-
-        elif self.use_pca_DINO:
-            pca_evecs_x = data_x['pca_feat']
-            pca_evecs_x = torch.flip(pca_evecs_x, dims=[2])  # Reversing along the third dimension, we flip here due to the pca eigenvectors are ordered from large to small
-            pca_evecs_y = data_y['pca_feat']
-            pca_evecs_y = torch.flip(pca_evecs_y, dims=[2])  # Reversing along the third dimension
-
-            pca_evals_x = data_x['pca_eval']
-            pca_evals_x = torch.flip(pca_evals_x, dims=[1])
-            pca_evals_y = data_y['pca_eval']
-            pca_evals_y = torch.flip(pca_evals_y, dims=[1])
-
-            pca_evecs_trans_x = pca_evecs_x.transpose(2, 1)
-            pca_evecs_trans_y = pca_evecs_y.transpose(2, 1)
-
-            Cxy, Cyx = self.networks['fmap_net'](feat_x, feat_y, pca_evals_x, pca_evals_y, pca_evecs_trans_x, pca_evecs_trans_y)
-
-            self.loss_metrics = self.losses['surfmnet_loss'](Cxy, Cyx, pca_evals_x, pca_evals_y)
-            Pxy, Pyx = self.compute_permutation_matrix(feat_x, feat_y, bidirectional=True)
-
-            # compute C
-            Cxy_est = torch.bmm(pca_evecs_trans_y, torch.bmm(Pyx, pca_evecs_x))
-
-            self.loss_metrics['l_align'] = self.losses['align_loss'](Cxy, Cxy_est)
-            if not self.partial:
-                Cyx_est = torch.bmm(pca_evecs_trans_x, torch.bmm(Pxy, pca_evecs_y))
                 self.loss_metrics['l_align'] += self.losses['align_loss'](Cyx, Cyx_est)
 
         if 'dirichlet_loss' in self.losses:
@@ -145,14 +117,9 @@ class FMNetModel(BaseModel):
             evecs_y = data_y['evecs'].squeeze()
             evecs_trans_x = data_x['evecs_trans'].squeeze()
             evecs_trans_y = data_y['evecs_trans'].squeeze()
-        elif self.use_pca_DINO:
-            evecs_x = data_x['pca_feat'].squeeze()
-            evecs_y = data_y['pca_feat'].squeeze()
-            evecs_trans_x = evecs_x.squeeze()
-            evecs_trans_y = evecs_y.squeeze()
         elif self.use_graph_laplacian_DINO:
-            evecs_x = data_x['gl_feat'].squeeze()
-            evecs_y = data_y['gl_feat'].squeeze()
+            evecs_x = data_x['gl_evecs'].squeeze()
+            evecs_y = data_y['gl_evecs'].squeeze()
             evecs_trans_x = evecs_x.transpose(1, 0).squeeze()
             evecs_trans_y = evecs_y.transpose(1, 0).squeeze()
 
