@@ -125,13 +125,13 @@ def parse_options(root_path, is_train=True):
         raise ValueError(f'Invalid backend option: {opt["backend"]}, only supports "dp" and "ddp"')
 
     # check sanity
-    return_gl_train = opt.get('datasets', {}).get('train_dataset', {}).get('return_gl', None)
-    return_gl_test = opt.get('datasets', {}).get('test_dataset', {}).get('return_gl', None)
+    return_gl_train = opt.get('datasets', {}).get('train_dataset', {}).get('return_gl', False)
+    return_gl_test = opt.get('datasets', {}).get('test_dataset', {}).get('return_gl', False)
 
     basis = opt.get('basis', "LBO")
     assert basis in VALID_BASIS_TYPES, f"Invalid basis type: {self.basis}, only supports {VALID_BASIS_TYPES}"
     use_LBO = basis == 'LBO'
-    use_graph_laplacian_DINO = basis == 'GRAPH_LAPLACIAN'
+    use_graph_laplacian_DINO = (basis == 'GRAPH_LAPLACIAN')
 
     if return_gl_train != use_graph_laplacian_DINO:
         raise ValueError("Error: 'return_gl' in train_dataset and 'use_graph_laplacian_DINO' in basis must be the same")

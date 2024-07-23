@@ -2,7 +2,11 @@ import datetime
 import sys
 import math
 import time
+import os
 from os import path as osp
+
+# Add the parent directory to the system path for absolute namespacing
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import torch.cuda
 
@@ -10,9 +14,9 @@ from datasets import build_dataloader, build_dataset
 from datasets.data_sampler import EnlargedSampler
 
 from models import build_model
-from utils import (AvgTimer, MessageLogger, get_env_info, get_root_logger,
+from ulrssm.utils import (AvgTimer, MessageLogger, get_env_info, get_root_logger,
                    init_tb_logger)
-from utils.options import dict2str, parse_options
+from ulrssm.utils.options import dict2str, parse_options
 
 
 def init_tb_loggers(opt):

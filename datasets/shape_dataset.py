@@ -8,9 +8,9 @@ from pathlib import Path
 import torch
 from torch.utils.data import Dataset
 
-from utils.shape_util import read_shape
-from utils.geometry_util import get_operators
-from utils.registry import DATASET_REGISTRY
+from ..utils.shape_util import read_shape
+from ..utils.geometry_util import get_operators
+from ..utils.registry import DATASET_REGISTRY
 
 import potpourri3d as pp3d
 
@@ -43,7 +43,8 @@ class SingleShapeDataset(Dataset):
                  data_root, return_faces=False,
                  return_evecs=True, num_evecs=200,
                  return_corr=False, return_dist=False, return_gl=False,
-                 gl_feature_path=None, sample_and_indices=None):
+                 gl_feature_path="graph_laplacian", sample_and_indices=None,
+                 return_dino=False, dino_feature_path="dino_features"):
         """
         Single Shape Dataset
 
@@ -65,11 +66,14 @@ class SingleShapeDataset(Dataset):
         self.return_corr = return_corr
         self.return_dist = return_dist
         self.return_gl = return_gl
+        self.return_dino = return_dino
         self.num_evecs = num_evecs
         self.sample_and_indices = sample_and_indices
 
         if self.return_gl:
             self.gl_path = gl_feature_path
+        if self.return_dino:
+            self.dino_path = dino_feature_path
 
         self.off_files = []
         self.gl_feature_files = [] if self.return_gl else None
@@ -112,6 +116,13 @@ class SingleShapeDataset(Dataset):
                 gl_feature_path.glob("*.pt"),
             )
             assert gl_feature_path.exists() and len(self.gl_feature_files) > 0, f'Invalid path {gl_feature_path} does not contain any .pt files'
+
+        if self.return_dino:
+            dino_feature_path = Path(self.data_root) / self.dino_path
+            self.dino_feature_files = sort_list(
+                dino_feature_path.glob("*.pt"),
+            )
+            assert dino_feature_path.exists() and len(self.dino_feature_files) > 0, f'Invalid path {dino_feature_path} does not contain any .pt files'
 
         # check the data path contains .vts files
         if self.return_corr:
@@ -172,6 +183,13 @@ class SingleShapeDataset(Dataset):
             item['gl_eval'] = graph_data['evals']
             assert item['gl_evecs'].shape[0] == item['verts'].shape[0]
 
+        if self.return_dino:
+            dino_feature_file = self.dino_feature_files[index]
+            assert Path(off_file).name in dino_feature_file.name, f"The dino_feature_file {Path(off_file).name} does not match with the off file {dino_feature_file.name}"
+            dino_data = torch.load(dino_feature_file)
+            item['dino_features'] = dino_data
+            assert item['dino_features'].shape[0] == item['verts'].shape[0]
+
         # get geodesic distance matrix
         if self.return_dist:
             mat = sio.loadmat(self.dist_files[index])
@@ -196,13 +214,8 @@ class SingleShapeDataset(Dataset):
 @DATASET_REGISTRY.register()
 class SingleFaustDataset(SingleShapeDataset):
     def __init__(self, data_root,
-                 phase, return_faces=True,
-                 return_evecs=True, num_evecs=200,
-                 return_corr=True, return_dist=False, return_gl=False,
-                 gl_feature_path=None, sample_and_indices=None):
-        super(SingleFaustDataset, self).__init__(data_root, return_faces,
-                                                 return_evecs, num_evecs,
-                                                 return_corr, return_dist, return_gl, gl_feature_path, sample_and_indices)
+                 phase, *args, **kwds):
+        super(SingleFaustDataset, self).__init__(data_root, *args, **kwds)
         assert phase in ['train', 'test', 'full'], f'Invalid phase {phase}, only "train" or "test" or "full"'
         assert len(self) == 100, f'FAUST dataset should contain 100 human body shapes, but get {len(self)}.'
         if phase == 'train':
@@ -214,6 +227,8 @@ class SingleFaustDataset(SingleShapeDataset):
                 self.dist_files = self.dist_files[:80]
             if self.gl_feature_files:
                 self.gl_feature_files = self.gl_feature_files[:80]
+            if self.dino_feature_files:
+                self.dino_feature_files = self.dino_feature_files[:80]
             self._size = 80
         elif phase == 'test':
             if self.off_files:
@@ -224,6 +239,8 @@ class SingleFaustDataset(SingleShapeDataset):
                 self.dist_files = self.dist_files[80:]
             if self.gl_feature_files:
                 self.gl_feature_files = self.gl_feature_files[80:]
+            if self.dino_feature_files:
+                self.dino_feature_files = self.dino_feature_files[80:]
             self._size = 20
 
 
@@ -232,7 +249,7 @@ class SingleScapeDataset(SingleShapeDataset):
     def __init__(self, data_root,
                  phase, return_faces=True,
                  return_evecs=True, num_evecs=200,
-                 return_corr=True, return_dist=False, return_gl=False, sample_and_indices=None):
+                 return_corr=True, return_dist=False, return_gl=False, sample_and_indices=None, *args, **kwds):
         super(SingleScapeDataset, self).__init__(data_root, return_faces,
                                                  return_evecs, num_evecs,
                                                  return_corr, return_dist, return_gl, sample_and_indices)
