@@ -81,13 +81,13 @@ class SingleShapeDataset(Dataset):
         self.corr_files = [] if self.return_corr else None
         self.dist_files = [] if self.return_dist else None
 
-        if self.sample_and_indices and self.sample_and_indices.get('sampled') is not None:
-            self.sampled = self.sample_and_indices['sampled'] 
-            # print('sampled!!!!', self.sampled)
-            self.index_path = self.sample_and_indices['indices_relative_path'] if self.sample_and_indices.get('indices_relative_path') else None
-        else:
-            self.sampled = None
-            self.index_path = []
+        # if self.sample_and_indices and self.sample_and_indices.get('sampled') is not None:
+        #     self.sampled = self.sample_and_indices['sampled'] 
+        #     # print('sampled!!!!', self.sampled)
+        #     self.index_path = self.sample_and_indices['indices_relative_path'] if self.sample_and_indices.get('indices_relative_path') else None
+        # else:
+        #     self.sampled = None
+        #     self.index_path = []
 
         self._init_data()
 
@@ -133,22 +133,22 @@ class SingleShapeDataset(Dataset):
 
         # check the data path contains .mat files
         if self.return_dist:
-            dist_path = os.path.join(self.data_root, 'dist')
+            dist_path = os.path.join(Path(self.data_root).parent, 'dist')
             assert os.path.isdir(dist_path), f'Invalid path {dist_path} not containing .mat files'
             self.dist_files = sort_list(glob(f'{dist_path}/*.mat'))
 
-        if self.sampled:
-            self.index_path = os.path.join(self.data_root, self.index_path)
-            if os.path.exists(self.index_path):
-                file_extension = os.path.splitext(self.index_path)[1]
-                if file_extension == '.npy':
-                    self.index = torch.from_numpy(np.load(self.index_path))
-                elif file_extension == '.pt':
-                    self.index = torch.load(self.index_path)
-                else:
-                    raise ValueError(f"Unsupported file type: {file_extension}")
-            else:
-                raise FileNotFoundError(f"The file {self.index_path} does not exist.")
+        # if self.sampled:
+        #     self.index_path = os.path.join(self.data_root, self.index_path)
+        #     if os.path.exists(self.index_path):
+        #         file_extension = os.path.splitext(self.index_path)[1]
+        #         if file_extension == '.npy':
+        #             self.index = torch.from_numpy(np.load(self.index_path))
+        #         elif file_extension == '.pt':
+        #             self.index = torch.load(self.index_path)
+        #         else:
+        #             raise ValueError(f"Unsupported file type: {file_extension}")
+        #     else:
+        #         raise FileNotFoundError(f"The file {self.index_path} does not exist.")
 
     def __getitem__(self, index):
         item = dict()
@@ -162,19 +162,13 @@ class SingleShapeDataset(Dataset):
         # verts, faces = read_shape(off_file)
         verts, faces = pp3d.read_mesh(off_file)
         item['verts'] = torch.from_numpy(np.ascontiguousarray(verts)).float()
-        if self.sampled:
-            item['verts'] = item['verts'][self.index]
+        
         if self.return_faces:
             item['faces'] = torch.from_numpy(np.ascontiguousarray(faces)).long()
 
         # get eigenfunctions/eigenvalues
         if self.return_evecs:
-            if self.sampled:
-                #need to change here
-                item = get_spectral_ops(item, num_evecs=self.num_evecs, cache_dir=os.path.join(self.data_root, 'diffusion_pcd_1024')) #need to change here
-            else:
-                #need to change here
-                item = get_spectral_ops(item, num_evecs=self.num_evecs, cache_dir=os.path.join(self.data_root, 'diffusion')) 
+            item = get_spectral_ops(item, num_evecs=self.num_evecs, cache_dir=os.path.join(self.data_root, 'diffusion')) 
 
         if self.return_gl:
             gl_feature_file = self.gl_feature_files[index]
@@ -195,9 +189,10 @@ class SingleShapeDataset(Dataset):
         if self.return_dist:
             mat = sio.loadmat(self.dist_files[index])
             item['dist'] = torch.from_numpy(mat['dist']).float()
-            if self.sampled:
-                item['dist'] = item['dist'][self.index, :][:, self.index] #TODO:Here we still use mesh version to calculate the dist(also possible to change to pcd, but currently using mesh to calculate this)
-                # print('Sampled distance mat shape', item['dist'].shape)
+            # We have sampled on the preprocess.py 
+            # if self.sampled:
+            #     item['dist'] = item['dist'][self.index, :][:, self.index] #TODO:Here we still use mesh version to calculate the dist(also possible to change to pcd, but currently using mesh to calculate this)
+            #     # print('Sampled distance mat shape', item['dist'].shape)
         # get correspondences
         if self.return_corr:
             corr = np.loadtxt(self.corr_files[index], dtype=np.int32) - 1  # minus 1 to start from 0
@@ -228,8 +223,6 @@ class SingleFaustDataset(SingleShapeDataset):
                 self.dist_files = self.dist_files[:80]
             if self.gl_feature_files:
                 self.gl_feature_files = self.gl_feature_files[:80]
-            if self.dino_feature_files:
-                self.dino_feature_files = self.dino_feature_files[:80]
             self._size = 80
         elif phase == 'test':
             if self.off_files:
@@ -240,8 +233,6 @@ class SingleFaustDataset(SingleShapeDataset):
                 self.dist_files = self.dist_files[80:]
             if self.gl_feature_files:
                 self.gl_feature_files = self.gl_feature_files[80:]
-            if self.dino_feature_files:
-                self.dino_feature_files = self.dino_feature_files[80:]
             self._size = 20
 
 

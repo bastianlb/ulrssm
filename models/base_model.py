@@ -115,7 +115,7 @@ class BaseModel:
             if isinstance(self.schedulers[name], (optim.lr_scheduler.StepLR, optim.lr_scheduler.MultiStepLR,
                                                   MultiStepRestartLR, optim.lr_scheduler.ExponentialLR,
                                                   optim.lr_scheduler.CosineAnnealingLR,
-                                                  optim.lr_scheduler.CosineAnnealingWarmRestarts)):
+                                                  optim.lr_scheduler.CosineAnnealingWarmRestarts, optim.lr_scheduler.ReduceLROnPlateau)):
                 self.schedulers[name].step()
 
     def get_current_learning_rate(self):
@@ -330,6 +330,8 @@ class BaseModel:
                 self.schedulers[name] = optim.lr_scheduler.MultiStepLR(optimizer, **scheduler_opts[name])
             elif scheduler_type == 'ExponentialLR':
                 self.schedulers[name] = optim.lr_scheduler.ExponentialLR(optimizer, **scheduler_opts[name])
+            elif scheduler_type == 'ReduceLROnPlateau':
+                self.schedulers[name] = optim.lr_scheduler.ReduceLROnPlateau(optimizer, **scheduler_opts[name])
             elif scheduler_type == 'none':
                 self.schedulers[name] = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda x: 1)
             else:

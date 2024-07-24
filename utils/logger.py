@@ -165,7 +165,7 @@ def get_root_logger(logger_name='root_logger', log_file=None, log_level=logging.
 
     Returns:
         logging.Logger: The root logger.
-    """
+    """ 
     logger = logging.getLogger(logger_name)
     # if the logger has been initialized, just return it.
     if logger_name in initialized_logger:
@@ -173,9 +173,10 @@ def get_root_logger(logger_name='root_logger', log_file=None, log_level=logging.
 
     # initialize stream handler
     format_str = '%(asctime)s %(levelname)s: %(message)s'
-    stream_handler = logging.StreamHandler()
-    stream_handler.setFormatter(logging.Formatter(format_str))
-    logger.addHandler(stream_handler)
+    if not any(isinstance(handler, logging.StreamHandler) for handler in logger.handlers):
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(logging.Formatter(format_str))
+        logger.addHandler(stream_handler)
     logger.propagate = False
 
     # initialize logger level for each process
@@ -185,10 +186,11 @@ def get_root_logger(logger_name='root_logger', log_file=None, log_level=logging.
     elif log_file is not None:
         logger.setLevel(log_level)
         # add file handler
-        file_handler = logging.FileHandler(log_file, 'w')
-        file_handler.setFormatter(logging.Formatter(format_str))
-        file_handler.setLevel(log_level)
-        logger.addHandler(file_handler)
+        if log_file and not any(isinstance(handler, logging.FileHandler) for handler in logger.handlers):
+            file_handler = logging.FileHandler(log_file, 'w')
+            file_handler.setFormatter(logging.Formatter(format_str))
+            file_handler.setLevel(log_level)
+            logger.addHandler(file_handler)
 
     # add logger to initialized logger
     initialized_logger[logger_name] = True
