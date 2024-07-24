@@ -115,8 +115,10 @@ class BaseModel:
             if isinstance(self.schedulers[name], (optim.lr_scheduler.StepLR, optim.lr_scheduler.MultiStepLR,
                                                   MultiStepRestartLR, optim.lr_scheduler.ExponentialLR,
                                                   optim.lr_scheduler.CosineAnnealingLR,
-                                                  optim.lr_scheduler.CosineAnnealingWarmRestarts, optim.lr_scheduler.ReduceLROnPlateau)):
+                                                  optim.lr_scheduler.CosineAnnealingWarmRestarts)):
                 self.schedulers[name].step()
+            else:
+                self.schedulers[name].step(self.loss_metrics['l_total'])
 
     def get_current_learning_rate(self):
         """
