@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from utils.registry import METRIC_REGISTRY
+from ulrssm.utils.registry import METRIC_REGISTRY
 
 
 @METRIC_REGISTRY.register()

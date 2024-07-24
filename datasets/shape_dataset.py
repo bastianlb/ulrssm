@@ -77,6 +77,7 @@ class SingleShapeDataset(Dataset):
 
         self.off_files = []
         self.gl_feature_files = [] if self.return_gl else None
+        self.dino_feature_files = [] if self.return_dino else None
         self.corr_files = [] if self.return_corr else None
         self.dist_files = [] if self.return_dist else None
 

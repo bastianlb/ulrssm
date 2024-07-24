@@ -1,8 +1,8 @@
 import importlib
 import os.path as osp
 
-from utils import get_root_logger, scandir
-from utils.registry import METRIC_REGISTRY
+from ulrssm.utils import get_root_logger, scandir
+from ulrssm.utils.registry import METRIC_REGISTRY
 
 __all__ = ['build_metric']
 
@@ -12,7 +12,7 @@ __all__ = ['build_metric']
 metric_folder = osp.dirname(osp.abspath(__file__))
 metric_filenames = [osp.splitext(osp.basename(v))[0] for v in scandir(metric_folder) if v.endswith('_metric.py')]
 # import all the model modules
-_metric_modules = [importlib.import_module(f'metrics.{file_name}') for file_name in metric_filenames]
+_metric_modules = [importlib.import_module(f'ulrssm.metrics.{file_name}') for file_name in metric_filenames]
 
 
 def build_metric(opt):
