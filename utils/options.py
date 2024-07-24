@@ -129,7 +129,7 @@ def parse_options(root_path, is_train=True):
     return_gl_test = opt.get('datasets', {}).get('test_dataset', {}).get('return_gl', False)
 
     basis = opt.get('basis', "LBO")
-    assert basis in VALID_BASIS_TYPES, f"Invalid basis type: {self.basis}, only supports {VALID_BASIS_TYPES}"
+    assert basis in VALID_BASIS_TYPES, f"Invalid basis type: {basis}, only supports {VALID_BASIS_TYPES}"
     use_LBO = basis == 'LBO'
     use_graph_laplacian_DINO = (basis == 'GRAPH_LAPLACIAN')
 
