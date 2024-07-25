@@ -133,7 +133,7 @@ class SingleShapeDataset(Dataset):
 
         # check the data path contains .mat files
         if self.return_dist:
-            dist_path = os.path.join(Path(self.data_root).parent, 'dist')
+            dist_path = os.path.join(Path(self.data_root), 'dist')
             assert os.path.isdir(dist_path), f'Invalid path {dist_path} not containing .mat files'
             self.dist_files = sort_list(glob(f'{dist_path}/*.mat'))
 
