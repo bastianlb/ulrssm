@@ -44,4 +44,3 @@ def pointmap2fmap(p2p, evecs_x, evecs_y):
     """
     C21 = torch.linalg.lstsq(evecs_x, evecs_y[p2p, :]).solution
     return C21
-

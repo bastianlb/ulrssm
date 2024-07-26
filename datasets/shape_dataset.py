@@ -172,22 +172,24 @@ class SingleShapeDataset(Dataset):
 
         if self.return_gl:
             gl_feature_file = self.gl_feature_files[index]
-            assert Path(off_file).name in gl_feature_file.name, f"The gl_feature_file {Path(off_file).name} does not match with the off file {gl_feature_file.name}"
+            assert Path(off_file).name in gl_feature_file.name, f"The mesh file {Path(off_file).name} does not match with the gl_feature file {gl_feature_file.name}"
             graph_data = torch.load(gl_feature_file)
-            item['gl_evecs'] = graph_data['evecs']
-            item['gl_eval'] = graph_data['evals']
+            item['gl_evecs'] = torch.tensor(graph_data['evecs'])
+            item['gl_eval'] = torch.tensor(graph_data['evals'])
             assert item['gl_evecs'].shape[0] == item['verts'].shape[0]
 
         if self.return_dino:
             dino_feature_file = self.dino_feature_files[index]
-            assert Path(off_file).name in dino_feature_file.name, f"The dino_feature_file {Path(off_file).name} does not match with the off file {dino_feature_file.name}"
+            assert Path(off_file).name in dino_feature_file.name, f"The mesh file {Path(off_file).name} does not match with the dino feature file {dino_feature_file.name}"
             dino_data = torch.load(dino_feature_file)
-            item['dino_features'] = dino_data
+            item['dino_features'] = dino_data  # already a tensor
             assert item['dino_features'].shape[0] == item['verts'].shape[0]
 
         # get geodesic distance matrix
         if self.return_dist:
-            mat = sio.loadmat(self.dist_files[index])
+            dist_file = self.dist_files[index]
+            assert Path(off_file).stem in Path(dist_file).name, f"The mesh file {Path(off_file).name} does not match with the dist file {dist_file}"
+            mat = sio.loadmat(dist_file)
             item['dist'] = torch.from_numpy(mat['dist']).float()
             # We have sampled on the preprocess.py 
             # if self.sampled:
@@ -195,7 +197,9 @@ class SingleShapeDataset(Dataset):
             #     # print('Sampled distance mat shape', item['dist'].shape)
         # get correspondences
         if self.return_corr:
-            corr = np.loadtxt(self.corr_files[index], dtype=np.int32) - 1  # minus 1 to start from 0
+            corr_file = self.corr_files[index]
+            assert Path(off_file).stem in Path(corr_file).name, f"The mesh file {Path(off_file).name} does not match with the corr file {corr_file}"
+            corr = np.loadtxt(corr_file, dtype=np.int32) - 1  # minus 1 to start from 0
         else:
             corr = np.arange(item['verts'].shape[0])
         item['corr'] = torch.from_numpy(corr).long()
@@ -223,6 +227,8 @@ class SingleFaustDataset(SingleShapeDataset):
                 self.dist_files = self.dist_files[:80]
             if self.gl_feature_files:
                 self.gl_feature_files = self.gl_feature_files[:80]
+            if self.dino_feature_files:
+                self.dino_feature_files = self.dino_feature_files[:80]
             self._size = 80
         elif phase == 'test':
             if self.off_files:
@@ -233,6 +239,8 @@ class SingleFaustDataset(SingleShapeDataset):
                 self.dist_files = self.dist_files[80:]
             if self.gl_feature_files:
                 self.gl_feature_files = self.gl_feature_files[80:]
+            if self.dino_feature_files:
+                self.dino_feature_files = self.dino_feature_files[80:]
             self._size = 20
 
 
@@ -377,35 +385,22 @@ class PairShapeDataset(Dataset):
 
 @DATASET_REGISTRY.register()
 class PairDataset(PairShapeDataset):
-    def __init__(self, data_root, return_faces=True,
-                 return_evecs=True, num_evecs=200,
-                 return_corr=True, return_dist=False, return_gl=True, gl_feature_path=None, sample_and_indices=None):
-        dataset = SingleShapeDataset(data_root, return_faces, return_evecs, num_evecs,
-                                     return_corr, return_dist, return_gl, gl_feature_path, sample_and_indices)
+    def __init__(self, *args, **kwds):
+        dataset = SingleShapeDataset(*args, **kwds)
         super(PairDataset, self).__init__(dataset)
 
 
 @DATASET_REGISTRY.register()
 class PairFaustDataset(PairShapeDataset):
-    def __init__(self, data_root,
-                 phase, return_faces=True,
-                 return_evecs=True, num_evecs=200,
-                 return_corr=True, return_dist=False, return_gl=False, gl_feature_path=None, sample_and_indices=None):
-        dataset = SingleFaustDataset(data_root, phase, return_faces,
-                                     return_evecs, num_evecs,
-                                     return_corr, return_dist, return_gl, gl_feature_path, sample_and_indices)
+    def __init__(self, *args, **kwds):
+        dataset = SingleFaustDataset(*args, **kwds)
         super(PairFaustDataset, self).__init__(dataset)
 
 
 @DATASET_REGISTRY.register()
 class PairScapeDataset(PairShapeDataset):
-    def __init__(self, data_root,
-                 phase, return_faces=True,
-                 return_evecs=True, num_evecs=200,
-                 return_corr=True, return_dist=False, return_gl=True, gl_feature_path=None, sample_and_indices=None):
-        dataset = SingleScapeDataset(data_root, phase, return_faces,
-                                     return_evecs, num_evecs,
-                                     return_corr, return_dist, return_gl, gl_feature_path, sample_and_indices)
+    def __init__(self, *args, **kwds):
+        dataset = SingleScapeDataset(*args, **kwds)
         super(PairScapeDataset, self).__init__(dataset)
 
 
