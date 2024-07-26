@@ -246,13 +246,8 @@ class SingleFaustDataset(SingleShapeDataset):
 
 @DATASET_REGISTRY.register()
 class SingleScapeDataset(SingleShapeDataset):
-    def __init__(self, data_root,
-                 phase, return_faces=True,
-                 return_evecs=True, num_evecs=200,
-                 return_corr=True, return_dist=False, return_gl=False, sample_and_indices=None, *args, **kwds):
-        super(SingleScapeDataset, self).__init__(data_root, return_faces,
-                                                 return_evecs, num_evecs,
-                                                 return_corr, return_dist, return_gl, sample_and_indices)
+    def __init__(self, *args, phase, **kwds):
+        super(SingleScapeDataset, self).__init__(*args, **kwds)
         assert phase in ['train', 'test', 'full'], f'Invalid phase {phase}, only "train" or "test" or "full"'
         assert len(self) == 71, f'FAUST dataset should contain 71 human body shapes, but get {len(self)}.'
         if phase == 'train':
@@ -284,18 +279,14 @@ class SingleShrec19Dataset(SingleShapeDataset):
 
 @DATASET_REGISTRY.register()
 class SingleSmalDataset(SingleShapeDataset):
-    def __init__(self, data_root, phase='train', category=True,
-                 return_faces=True,
-                 return_evecs=True, num_evecs=200,
-                 return_corr=True, return_dist=False, return_gl=False, sample_and_indices=None):
+    def __init__(self, *args, phase='train', category=True, **kwds):
         '''
         TODO: should also modify this part as before for new input variables
         '''
         
         self.phase = phase
         self.category = category
-        super(SingleSmalDataset, self).__init__(data_root, return_faces, return_evecs, num_evecs,
-                                                return_corr, return_dist, return_gl, sample_and_indices)
+        super(SingleSmalDataset, self).__init__(*args, **kwds)
 
     def _init_data(self):
         if self.category:
@@ -311,19 +302,19 @@ class SingleSmalDataset(SingleShapeDataset):
                     self.corr_files += [os.path.join(self.data_root, 'corres', f'{line}.vts')]
                 if self.return_dist:
                     self.dist_files += [os.path.join(self.data_root, 'dist', f'{line}.mat')]
+                # TODO: i don't like hardcoding these here again, but we dont need to rewrite his dataloading
+                if self.return_gl:
+                    self.gl_feature_files += [Path(self.data_root) / self.gl_path / f'{line}.off.pt']
+                if self.return_dino:
+                    self.dino_feature_files += [Path(self.data_root) / self.dino_path / f'{line}.off.pt']
 
 
 @DATASET_REGISTRY.register()
 class SingleDT4DDataset(SingleShapeDataset):
-    def __init__(self, data_root, phase='train',
-                 return_faces=True,
-                 return_evecs=True, num_evecs=200,
-                 return_corr=True, return_dist=False, return_gl=False, sample_and_indices=None):
+    def __init__(self, *args, phase='train', **kwds):
         self.phase = phase
         self.ignored_categories = ['pumpkinhulk']
-        super(SingleDT4DDataset, self).__init__(data_root, return_faces,
-                                                return_evecs, num_evecs,
-                                                return_corr, return_dist, return_gl, sample_and_indices)
+        super(SingleDT4DDataset, self).__init__(*args, **kwds)
 
     def _init_data(self):
         with open(os.path.join(self.data_root, f'{self.phase}.txt'), 'r') as f:
@@ -336,6 +327,11 @@ class SingleDT4DDataset(SingleShapeDataset):
                         self.corr_files += [os.path.join(self.data_root, 'corres', f'{line}.vts')]
                     if self.return_dist:
                         self.dist_files += [os.path.join(self.data_root, 'dist', f'{line}.mat')]
+                    # TODO: i don't like hardcoding these here again, but we dont need to rewrite his dataloading
+                    if self.return_gl:
+                        self.gl_feature_files += [Path(self.data_root) / self.gl_path / f'{line}.off.pt']
+                    if self.return_dino:
+                        self.dino_feature_files += [Path(self.data_root) / self.dino_path / f'{line}.off.pt']
 
 
 @DATASET_REGISTRY.register()
@@ -450,25 +446,16 @@ class PairShrec19Dataset(Dataset):
 
 @DATASET_REGISTRY.register()
 class PairSmalDataset(PairShapeDataset):
-    def __init__(self, data_root, phase='train',
-                 category=True, return_faces=True,
-                 return_evecs=True, num_evecs=200,
-                 return_corr=True, return_dist=False, return_gl=True, gl_feature_path=None, sample_and_indices=None):
-        dataset = SingleSmalDataset(data_root, phase, category, return_faces,
-                                    return_evecs, num_evecs,
-                                    return_corr, return_dist, return_gl, gl_feature_path, sample_and_indices)
+    def __init__(self, *args, phase='train', **kwds):
+        dataset = SingleSmalDataset(*args, phase=phase, **kwds)
         super(PairSmalDataset, self).__init__(dataset=dataset)
 
 
 @DATASET_REGISTRY.register()
 class PairDT4DDataset(PairShapeDataset):
-    def __init__(self, data_root, phase='train',
-                 inter_class=False, return_faces=True,
-                 return_evecs=True, num_evecs=200,
-                 return_corr=True, return_dist=False, return_gl=True, gl_feature_path=None, sample_and_indices=None):
-        dataset = SingleDT4DDataset(data_root, phase, return_faces,
-                                    return_evecs, num_evecs,
-                                    return_corr, return_dist, return_gl, gl_feature_path, sample_and_indices)
+    def __init__(self, *args, phase='train',
+                 inter_class=False, **kwds):
+        dataset = SingleDT4DDataset(*args, phase=phase, **kwds)
         super(PairDT4DDataset, self).__init__(dataset=dataset)
         self.inter_class = inter_class
         self.combinations = []
