@@ -187,8 +187,16 @@ class SingleShapeDataset(Dataset):
             gl_feature_file = self.gl_feature_files[index]
             assert Path(off_file).name in gl_feature_file.name, f"The mesh file {Path(off_file).name} does not match with the gl_feature file {gl_feature_file.name}"
             graph_data = torch.load(gl_feature_file)
-            item['gl_evecs'] = torch.tensor(graph_data['evecs'])
-            item['gl_evals'] = torch.tensor(graph_data['evals'])
+            if torch.is_tensor(graph_data['evecs']):
+                item['gl_evecs'] = graph_data['evecs'].float()
+            else:
+                item['gl_evecs'] = torch.tensor(graph_data['evecs'])
+            if torch.is_tensor(graph_data['evals']):
+                item['gl_evals'] = graph_data['evals'].float()
+            else:
+                item['gl_evals'] = torch.tensor(graph_data['evals'])
+
+            
             assert item['gl_evecs'].shape[0] == item['verts'].shape[0]
 
         if self.return_dino:
