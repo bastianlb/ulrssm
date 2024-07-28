@@ -72,9 +72,9 @@ class FMNetBase(BaseModel):
             gl_evecs_y = data_y['gl_evecs']
             # gl_evecs_y = torch.flip(gl_evecs_y, dims=[2])  # Reversing along the third dimension
 
-            gl_evals_x = data_x['gl_eval']
+            gl_evals_x = data_x['gl_evals']
             # gl_evals_x = torch.flip(gl_evals_x, dims=[1])
-            gl_evals_y = data_y['gl_eval']
+            gl_evals_y = data_y['gl_evals']
             # gl_evals_y = torch.flip(gl_evals_y, dims=[1])
 
             gl_evecs_trans_x = gl_evecs_x.transpose(2, 1)
