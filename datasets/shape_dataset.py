@@ -11,13 +11,13 @@ import torch
 from ..utils.shape_util import read_shape
 from ..utils.geometry_util import get_operators
 from ..utils.registry import DATASET_REGISTRY
+from ..utils.geometry_util import get_random_rotation
 
 import potpourri3d as pp3d
 
 from torch_geometric.data import Dataset, Data
 from torch_geometric.transforms import KNNGraph
 
-from utils.geometry_util import get_random_rotation
 
 
 def sort_list(l):
@@ -142,7 +142,7 @@ class SingleShapeDataset(Dataset):
 
         # check the data path contains .mat files
         if self.return_dist:
-            dist_path = os.path.join(Path(self.data_root).parent, 'dist')
+            dist_path = os.path.join(Path(self.data_root), 'dist')
             assert os.path.isdir(dist_path), f'Invalid path {dist_path} not containing .mat files'
             self.dist_files = sort_list(glob(f'{dist_path}/*.mat'))
 
