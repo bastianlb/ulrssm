@@ -17,6 +17,8 @@ import potpourri3d as pp3d
 from torch_geometric.data import Dataset, Data
 from torch_geometric.transforms import KNNGraph
 
+from utils.geometry_util import get_random_rotation
+
 
 def sort_list(l):
     try:
@@ -47,7 +49,7 @@ class SingleShapeDataset(Dataset):
                  return_evecs=True, num_evecs=200,
                  return_corr=False, return_dist=False, return_gl=False,
                  gl_feature_path="graph_laplacian", sample_and_indices=None,
-                 return_dino=False, dino_feature_path="dino_features", graph_data=False):
+                 return_dino=False, dino_feature_path="dino_features", graph_data=False, data_augmentation=None):
         """
         Single Shape Dataset
 
@@ -73,7 +75,8 @@ class SingleShapeDataset(Dataset):
         self.num_evecs = num_evecs
         self.sample_and_indices = sample_and_indices
         self.graph_data = graph_data
-
+        self.data_augmentation = data_augmentation
+ 
         if self.return_gl:
             self.gl_path = gl_feature_path
         if self.return_dino:
@@ -214,7 +217,14 @@ class SingleShapeDataset(Dataset):
             corr = np.arange(item['verts'].shape[0])
         item['corr'] = torch.from_numpy(corr).long()
         # print(item['corr'].shape)
-
+        
+        if self.data_augmentation:
+            if 'rotation' in self.data_augmentation.keys():
+                item['verts'] = self.rotation_augmentation(item['verts'])
+            if 'scale' in self.data_augmentation.keys():
+                item['verts'] = self.scale_augmentation(item['verts'])
+            if 'translation' in self.data_augmentation.keys():
+                item['verts'] = self.translation_augmentation(item['verts'])
         return item
 
     def __len__(self):
@@ -235,6 +245,30 @@ class SingleShapeDataset(Dataset):
         graph.edge_attr = edge_attr
 
         return graph
+    
+    def rotation_augmentation(self, verts, rot_x=0, rot_y=90.0, rot_z=0):
+        # random rotation
+        rotation_matrix = get_random_rotation(rot_x, rot_y, rot_z).repeat(verts.shape[0], 1, 1).to(verts.device)
+        verts = torch.bmm(verts, rotation_matrix.transpose(1, 2))
+        return verts
+        
+    def scale_augmentation(self, verts, scale_min=0.9, scale_max=1.1):
+        # random scaling
+        scales = [scale_min, scale_max]
+        scale = scales[0] + torch.rand((3,)) * (scales[1] - scales[0])
+        verts = verts * scale.to(verts.device)
+        return verts
+    
+    def translation_augmentation(self, verts, translate_range=(-0.1, 0.1)):
+        # # Fix random seed for reproducibility
+        # torch.manual_seed(42)
+
+        # Random translation
+        translate = translate_range[0] + torch.rand((3,)) * (translate_range[1] - translate_range[0])
+        verts = verts + translate.to(verts.device)  # Ensure the translation tensor is on the same device as verts
+        return verts
+        
+        
 
 
 @DATASET_REGISTRY.register()
