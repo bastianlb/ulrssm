@@ -1,12 +1,7 @@
 import torch
 import torch.nn.functional as F
 
-from .base_model import BaseModel
 from utils.registry import MODEL_REGISTRY
-from utils.tensor_util import to_device
-from utils.fmap_util import nn_query, fmap2pointmap
-from utils.options import VALID_BASIS_TYPES
-
 from .fmnet_base_loop import FMNetBase
 
 

@@ -117,7 +117,7 @@ class SingleShapeDataset(Dataset):
         off_path = os.path.join(self.data_root, 'off')
         assert os.path.isdir(off_path), f'Invalid path {off_path} not containing .off files'
         
-        self.off_files = sort_list(glob(f'{off_path}/*'))  # 获取并排序所有文件
+        self.off_files = sort_list(glob(f'{off_path}/*'))  
         self.off_files = [f for f in self.off_files if f.endswith('.off') or f.endswith('.ply')]  # 过滤出.off和.ply文件
 
         if self.return_gl:
