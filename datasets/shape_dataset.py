@@ -200,7 +200,6 @@ class SingleShapeDataset(Dataset):
             else:
                 item['gl_evals'] = torch.tensor(graph_data['evals'])
 
-
             assert item['gl_evecs'].shape[0] == item['verts'].shape[0]
 
         if self.return_dino:
