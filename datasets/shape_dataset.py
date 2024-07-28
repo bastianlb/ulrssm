@@ -6,13 +6,16 @@ from glob import glob
 from pathlib import Path
 
 import torch
-from torch.utils.data import Dataset
+# from torch.utils.data import Dataset
 
 from ..utils.shape_util import read_shape
 from ..utils.geometry_util import get_operators
 from ..utils.registry import DATASET_REGISTRY
 
 import potpourri3d as pp3d
+
+from torch_geometric.data import Dataset, Data
+from torch_geometric.transforms import KNNGraph
 
 
 def sort_list(l):
@@ -44,7 +47,7 @@ class SingleShapeDataset(Dataset):
                  return_evecs=True, num_evecs=200,
                  return_corr=False, return_dist=False, return_gl=False,
                  gl_feature_path="graph_laplacian", sample_and_indices=None,
-                 return_dino=False, dino_feature_path="dino_features"):
+                 return_dino=False, dino_feature_path="dino_features", graph_data=False):
         """
         Single Shape Dataset
 
@@ -69,6 +72,7 @@ class SingleShapeDataset(Dataset):
         self.return_dino = return_dino
         self.num_evecs = num_evecs
         self.sample_and_indices = sample_and_indices
+        self.graph_data = graph_data
 
         if self.return_gl:
             self.gl_path = gl_feature_path
@@ -81,13 +85,13 @@ class SingleShapeDataset(Dataset):
         self.corr_files = [] if self.return_corr else None
         self.dist_files = [] if self.return_dist else None
 
-        # if self.sample_and_indices and self.sample_and_indices.get('sampled') is not None:
-        #     self.sampled = self.sample_and_indices['sampled'] 
-        #     # print('sampled!!!!', self.sampled)
-        #     self.index_path = self.sample_and_indices['indices_relative_path'] if self.sample_and_indices.get('indices_relative_path') else None
-        # else:
-        #     self.sampled = None
-        #     self.index_path = []
+        if self.sample_and_indices and self.sample_and_indices.get('sampled') is not None:
+            self.sampled = self.sample_and_indices['sampled'] 
+            # print('sampled!!!!', self.sampled)
+            self.index_path = self.sample_and_indices['indices_relative_path'] if self.sample_and_indices.get('indices_relative_path') else None
+        else:
+            self.sampled = None
+            self.index_path = []
 
         self._init_data()
 
@@ -102,6 +106,8 @@ class SingleShapeDataset(Dataset):
 
         if self.return_corr:
             assert self._size == len(self.corr_files)
+        
+        self.graph_former = KNNGraph(k=10)
 
     def _init_data(self):
         # check the data path contains .off files
@@ -133,22 +139,22 @@ class SingleShapeDataset(Dataset):
 
         # check the data path contains .mat files
         if self.return_dist:
-            dist_path = os.path.join(Path(self.data_root), 'dist')
+            dist_path = os.path.join(Path(self.data_root).parent, 'dist')
             assert os.path.isdir(dist_path), f'Invalid path {dist_path} not containing .mat files'
             self.dist_files = sort_list(glob(f'{dist_path}/*.mat'))
 
-        # if self.sampled:
-        #     self.index_path = os.path.join(self.data_root, self.index_path)
-        #     if os.path.exists(self.index_path):
-        #         file_extension = os.path.splitext(self.index_path)[1]
-        #         if file_extension == '.npy':
-        #             self.index = torch.from_numpy(np.load(self.index_path))
-        #         elif file_extension == '.pt':
-        #             self.index = torch.load(self.index_path)
-        #         else:
-        #             raise ValueError(f"Unsupported file type: {file_extension}")
-        #     else:
-        #         raise FileNotFoundError(f"The file {self.index_path} does not exist.")
+        if self.sampled:
+            self.index_path = os.path.join(self.data_root, self.index_path)
+            if os.path.exists(self.index_path):
+                file_extension = os.path.splitext(self.index_path)[1]
+                if file_extension == '.npy':
+                    self.index = torch.from_numpy(np.load(self.index_path))
+                elif file_extension == '.pt':
+                    self.index = torch.load(self.index_path)
+                else:
+                    raise ValueError(f"Unsupported file type: {file_extension}")
+            else:
+                raise FileNotFoundError(f"The file {self.index_path} does not exist.")
 
     def __getitem__(self, index):
         item = dict()
@@ -163,6 +169,10 @@ class SingleShapeDataset(Dataset):
         verts, faces = pp3d.read_mesh(off_file)
         item['verts'] = torch.from_numpy(np.ascontiguousarray(verts)).float()
         
+        if self.graph_data:
+            item['data'] = Data(pos=item['verts'], x=item['verts'])
+            item['graph'] = self.create_graph(item['verts'])
+        
         if self.return_faces:
             item['faces'] = torch.from_numpy(np.ascontiguousarray(faces)).long()
 
@@ -172,7 +182,7 @@ class SingleShapeDataset(Dataset):
 
         if self.return_gl:
             gl_feature_file = self.gl_feature_files[index]
-            assert Path(off_file).name in gl_feature_file.name, f"The mesh file {Path(off_file).name} does not match with the gl_feature file {gl_feature_file.name}"
+            # assert Path(off_file).name in gl_feature_file.name, f"The mesh file {Path(off_file).name} does not match with the gl_feature file {gl_feature_file.name}"
             graph_data = torch.load(gl_feature_file)
             item['gl_evecs'] = torch.tensor(graph_data['evecs'])
             item['gl_eval'] = torch.tensor(graph_data['evals'])
@@ -192,9 +202,9 @@ class SingleShapeDataset(Dataset):
             mat = sio.loadmat(dist_file)
             item['dist'] = torch.from_numpy(mat['dist']).float()
             # We have sampled on the preprocess.py 
-            # if self.sampled:
-            #     item['dist'] = item['dist'][self.index, :][:, self.index] #TODO:Here we still use mesh version to calculate the dist(also possible to change to pcd, but currently using mesh to calculate this)
-            #     # print('Sampled distance mat shape', item['dist'].shape)
+            if self.sampled:
+                item['dist'] = item['dist'][self.index, :][:, self.index] #TODO:Here we still use mesh version to calculate the dist(also possible to change to pcd, but currently using mesh to calculate this)
+                # print('Sampled distance mat shape', item['dist'].shape)
         # get correspondences
         if self.return_corr:
             corr_file = self.corr_files[index]
@@ -209,6 +219,22 @@ class SingleShapeDataset(Dataset):
 
     def __len__(self):
         return self._size
+    
+    def create_graph(self, vertices: torch.Tensor) -> Data:
+        """
+        Creates a graph from a given input point cloud through kNN.
+        Args:
+            vertices:       input point cloud
+        Returns:
+            graph:          output graph
+        """
+        graph = Data(pos=vertices, x=vertices)
+        graph = self.graph_former(graph)
+        edges = graph.edge_index
+        edge_attr = torch.ones(edges.shape[1], dtype=torch.float32)
+        graph.edge_attr = edge_attr
+
+        return graph
 
 
 @DATASET_REGISTRY.register()

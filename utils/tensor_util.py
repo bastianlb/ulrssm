@@ -2,6 +2,7 @@ import numpy as np
 import numbers
 import torch
 
+from torch_geometric.data import Data
 
 def _to_device(x, device):
     if torch.is_tensor(x):
@@ -15,6 +16,11 @@ def to_device(x, device):
         return x
     elif isinstance(x, dict):
         x = {k: to_device(v, device) for (k, v) in x.items()}
+        return x
+    elif isinstance(x, Data):
+        x = x.to(device=device)
+        if x.edge_attr is not None:
+            x.edge_attr.to(device=device)
         return x
     else:
         return _to_device(x, device)
