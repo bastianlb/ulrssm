@@ -7,6 +7,8 @@ from copy import deepcopy
 from functools import partial
 from os import path as osp
 
+import torch_geometric
+
 import torchvision.transforms as transforms
 
 from ulrssm.utils import get_root_logger, scandir
@@ -135,7 +137,8 @@ def build_dataloader(dataset, dataset_opt, phase, num_gpu=1, dist=False, sampler
 
     dataloader_args['pin_memory'] = dataset_opt.get('pin_memory', False)
 
-    return torch.utils.data.DataLoader(**dataloader_args)
+    # return torch.utils.data.DataLoader(**dataloader_args)
+    return torch_geometric.loader.DataLoader(**dataloader_args)
 
 
 def worker_init_fn(worker_id, num_workers, rank, seed):
