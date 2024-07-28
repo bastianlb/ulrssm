@@ -49,7 +49,7 @@ class SingleShapeDataset(Dataset):
                  return_evecs=True, num_evecs=200,
                  return_corr=False, return_dist=False, return_gl=False,
                  gl_feature_path="graph_laplacian", sample_and_indices=None,
-                 return_dino=False, dino_feature_path="dino_features", graph_data=False, data_augmentation=None):
+                 return_dino=False, dino_feature_path="dino_features", graph_data=False, data_augmentation=None, unordered_mesh=False):
         """
         Single Shape Dataset
 
@@ -69,6 +69,7 @@ class SingleShapeDataset(Dataset):
         self.return_faces = return_faces
         self.return_evecs = return_evecs
         self.return_corr = return_corr
+        self.unordered_mesh = unordered_mesh
         self.return_dist = return_dist
         self.return_gl = return_gl
         self.return_dino = return_dino
@@ -85,7 +86,7 @@ class SingleShapeDataset(Dataset):
         self.off_files = []
         self.gl_feature_files = [] if self.return_gl else None
         self.dino_feature_files = [] if self.return_dino else None
-        self.corr_files = [] if self.return_corr else None
+        self.corr_files = [] if self.return_corr or self.unordered_mesh else None
         self.dist_files = [] if self.return_dist else None
 
         if self.sample_and_indices and self.sample_and_indices.get('sampled') is not None:
@@ -107,7 +108,7 @@ class SingleShapeDataset(Dataset):
         if self.return_dist:
             assert self._size == len(self.dist_files)
 
-        if self.return_corr:
+        if self.return_corr or self.unordered_mesh:
             assert self._size == len(self.corr_files)
         
         self.graph_former = KNNGraph(k=10)
@@ -135,8 +136,11 @@ class SingleShapeDataset(Dataset):
             assert dino_feature_path.exists() and len(self.dino_feature_files) > 0, f'Invalid path {dino_feature_path} does not contain any .pt files'
 
         # check the data path contains .vts files
-        if self.return_corr:
-            corr_path = os.path.join(self.data_root, 'corres')
+        if self.return_corr or self.unordered_mesh:
+            if self.unordered_mesh:
+                corr_path = os.path.join(Path(self.data_root).parent, 'corres')
+            else:
+                corr_path = os.path.join(self.data_root, 'corres')
             assert os.path.isdir(corr_path), f'Invalid path {corr_path} not containing .vts files'
             self.corr_files = sort_list(glob(f'{corr_path}/*.vts'))
 
@@ -187,8 +191,16 @@ class SingleShapeDataset(Dataset):
             gl_feature_file = self.gl_feature_files[index]
             assert Path(off_file).name in gl_feature_file.name, f"The mesh file {Path(off_file).name} does not match with the gl_feature file {gl_feature_file.name}"
             graph_data = torch.load(gl_feature_file)
-            item['gl_evecs'] = torch.tensor(graph_data['evecs'])
-            item['gl_evals'] = torch.tensor(graph_data['evals'])
+            if torch.is_tensor(graph_data['evecs']):
+                item['gl_evecs'] = graph_data['evecs'].float()
+            else:
+                item['gl_evecs'] = torch.tensor(graph_data['evecs'])
+            if torch.is_tensor(graph_data['evals']):
+                item['gl_evals'] = graph_data['evals'].float()
+            else:
+                item['gl_evals'] = torch.tensor(graph_data['evals'])
+
+
             assert item['gl_evecs'].shape[0] == item['verts'].shape[0]
 
         if self.return_dino:
@@ -198,6 +210,12 @@ class SingleShapeDataset(Dataset):
             item['dino_features'] = dino_data  # already a tensor
             assert item['dino_features'].shape[0] == item['verts'].shape[0]
 
+        # get correspondences
+        if self.unordered_mesh:
+            corr_file = self.corr_files[index]
+            assert Path(off_file).stem in Path(corr_file).name, f"The mesh file {Path(off_file).name} does not match with the corr file {corr_file}"
+            self.corr_shuffle = np.loadtxt(corr_file, dtype=np.int32) - 1  # minus 1 to start from 0
+        
         # get geodesic distance matrix
         if self.return_dist:
             dist_file = self.dist_files[index]
@@ -206,9 +224,11 @@ class SingleShapeDataset(Dataset):
             item['dist'] = torch.from_numpy(mat['dist']).float()
             # We have sampled on the preprocess.py 
             if self.sampled:
+                if self.unordered_mesh:
+                    item['dist'] = item['dist'][self.corr_shuffle, :][:, self.corr_shuffle]
                 item['dist'] = item['dist'][self.index, :][:, self.index] #TODO:Here we still use mesh version to calculate the dist(also possible to change to pcd, but currently using mesh to calculate this)
                 # print('Sampled distance mat shape', item['dist'].shape)
-        # get correspondences
+        
         if self.return_corr:
             corr_file = self.corr_files[index]
             assert Path(off_file).stem in Path(corr_file).name, f"The mesh file {Path(off_file).name} does not match with the corr file {corr_file}"
