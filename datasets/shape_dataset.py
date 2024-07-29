@@ -49,7 +49,8 @@ class SingleShapeDataset(Dataset):
                  return_evecs=True, num_evecs=200,
                  return_corr=False, return_dist=False, return_gl=False,
                  gl_feature_path="graph_laplacian", sample_and_indices=None,
-                 return_dino=False, dino_feature_path="dino_features", graph_data=False, data_augmentation=None, unordered_mesh=False):
+                 return_dino=False, dino_feature_path="dino_features", graph_data=False,
+                 data_augmentation=None, unordered_mesh=False):
         """
         Single Shape Dataset
 
@@ -92,10 +93,10 @@ class SingleShapeDataset(Dataset):
         if self.sample_and_indices and self.sample_and_indices.get('sampled') is not None:
             self.sampled = self.sample_and_indices['sampled'] 
             # print('sampled!!!!', self.sampled)
-            self.index_path = self.sample_and_indices['indices_relative_path'] if self.sample_and_indices.get('indices_relative_path') else None
+            self.sampled_index_file = self.sample_and_indices['indices_relative_path'] if self.sample_and_indices.get('indices_relative_path') else None
         else:
             self.sampled = None
-            self.index_path = []
+            self.sampled_index_file = None
 
         self._init_data()
 
@@ -151,17 +152,17 @@ class SingleShapeDataset(Dataset):
             self.dist_files = sort_list(glob(f'{dist_path}/*.mat'))
 
         if self.sampled:
-            self.index_path = os.path.join(self.data_root, self.index_path)
-            if os.path.exists(self.index_path):
-                file_extension = os.path.splitext(self.index_path)[1]
+            self.sampled_index_file = os.path.join(self.data_root, self.sampled_index_file)
+            if os.path.exists(self.sampled_index_file):
+                file_extension = os.path.splitext(self.sampled_index_file)[1]
                 if file_extension == '.npy':
-                    self.index = torch.from_numpy(np.load(self.index_path))
+                    self.sampled_indices = torch.from_numpy(np.load(self.sampled_index_file))
                 elif file_extension == '.pt':
-                    self.index = torch.load(self.index_path)
+                    self.sampled_indices = torch.load(self.sampled_index_file)
                 else:
                     raise ValueError(f"Unsupported file type: {file_extension}")
             else:
-                raise FileNotFoundError(f"The file {self.index_path} does not exist.")
+                raise FileNotFoundError(f"The file {self.sampled_index_file} does not exist.")
 
     def __getitem__(self, index):
         item = dict()
@@ -208,12 +209,18 @@ class SingleShapeDataset(Dataset):
             dino_data = torch.load(dino_feature_file)
             item['dino_features'] = dino_data  # already a tensor
             assert item['dino_features'].shape[0] == item['verts'].shape[0]
-
-        # get correspondences
-        if self.unordered_mesh:
+        
+        if self.return_corr:
             corr_file = self.corr_files[index]
             assert Path(off_file).stem in Path(corr_file).name, f"The mesh file {Path(off_file).name} does not match with the corr file {corr_file}"
-            self.corr_shuffle = np.loadtxt(corr_file, dtype=np.int32) - 1  # minus 1 to start from 0
+            corr = np.loadtxt(corr_file, dtype=np.int32) - 1  # minus 1 to start from 0
+            item['corr'] = torch.from_numpy(corr).long()
+            if self.sampled:
+                item['gt_corr'] = item['corr']
+                # For a sampled mesh, the vertices are already ordered.
+                # however, we still need gt_corr for some computations, like
+                # properly handling distance matrices
+                item['corr'] = np.arange(item['verts'].shape[0])
         
         # get geodesic distance matrix
         if self.return_dist:
@@ -224,17 +231,10 @@ class SingleShapeDataset(Dataset):
             # We have sampled on the preprocess.py 
             if self.sampled:
                 if self.unordered_mesh:
-                    item['dist'] = item['dist'][self.corr_shuffle, :][:, self.corr_shuffle]
-                item['dist'] = item['dist'][self.index, :][:, self.index] #TODO:Here we still use mesh version to calculate the dist(also possible to change to pcd, but currently using mesh to calculate this)
+                    gt_corr = item['gt_corr']
+                    item['dist'] = item['dist'][gt_corr, :][:, gt_corr]
+                item['dist'] = item['dist'][self.sampled_indices, :][:, self.sampled_indices] #TODO:Here we still use mesh version to calculate the dist(also possible to change to pcd, but currently using mesh to calculate this)
                 # print('Sampled distance mat shape', item['dist'].shape)
-        
-        if self.return_corr:
-            corr_file = self.corr_files[index]
-            assert Path(off_file).stem in Path(corr_file).name, f"The mesh file {Path(off_file).name} does not match with the corr file {corr_file}"
-            corr = np.loadtxt(corr_file, dtype=np.int32) - 1  # minus 1 to start from 0
-        else:
-            corr = np.arange(item['verts'].shape[0])
-        item['corr'] = torch.from_numpy(corr).long()
         # print(item['corr'].shape)
         
         if self.data_augmentation:

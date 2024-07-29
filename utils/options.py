@@ -108,9 +108,23 @@ def dict2str(opt, indent_level=1):
 def parse_options(root_path, is_train=True):
     parser = argparse.ArgumentParser()
     parser.add_argument('--opt', type=str, required=True, help='Path to option YAML file.')
+    parser.add_argument('--data_root', type=str, required=False, help='global data_root, will be prepended to relative train/test/cache paths.')
 
     args = parser.parse_args()
     opt = parse(args.opt, root_path, is_train=is_train)
+    global_data_root = args.data_root
+
+    if global_data_root is not None:
+        print(f"Global root set, concatenating paths with {global_data_root}.")
+        cache_dir = opt['networks']['feature_extractor'].get('cache_dir')
+        if cache_dir is not None:
+            opt['networks']['feature_extractor']['cache_dir'] = osp.join(global_data_root, cache_dir)
+        train_root = opt['datasets']['train_dataset'].get('data_root')
+        if train_root is not None:
+            opt['datasets']['train_dataset']['data_root'] = osp.join(global_data_root, train_root)
+        test_root = opt['datasets']['test_dataset'].get('data_root')
+        if test_root is not None:
+            opt['datasets']['test_dataset']['data_root'] = osp.join(global_data_root, test_root)
 
     # distributed settings
     if opt['backend'] == 'dp':
