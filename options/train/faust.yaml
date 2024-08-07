@@ -17,7 +17,7 @@ datasets:
     name: FaustTrain
     type: PairFaustDataset
     phase: train
-    data_root: ../data/FAUST_r
+    data_root: ./FAUST_r
     return_evecs: True
     return_faces: True
     num_evecs: 200
@@ -27,7 +27,7 @@ datasets:
     name: FaustTest
     type: PairFaustDataset
     phase: test
-    data_root: ../data/FAUST_r
+    data_root: ./FAUST_r
     return_evecs: True
     return_faces: True
     num_evecs: 200
@@ -43,7 +43,7 @@ networks:
     type: DiffusionNet
     in_channels: 128
     out_channels: 256
-    cache_dir: ../data/FAUST_r/diffusion
+    cache_dir: ./FAUST_r/diffusion
     input_type: wks
   fmap_net:
     type: RegularizedFMNet
@@ -85,5 +85,6 @@ val:
 
 # log setting
 logger:
+  type: wandb
   print_freq: 20
   save_checkpoint_freq: 4000

@@ -19,7 +19,6 @@ from torch_geometric.data import Dataset, Data
 from torch_geometric.transforms import KNNGraph
 
 
-
 def sort_list(l):
     try:
         return list(sorted(l, key=lambda x: int(re.search(r'\d+(?=\.)', str(x)).group())))

@@ -19,7 +19,13 @@ from ulrssm.utils import (AvgTimer, MessageLogger, get_env_info, get_root_logger
 from ulrssm.utils.options import dict2str, parse_options
 
 
-def init_tb_loggers(opt):
+def init_loggers(opt):
+    logger = opt['logger'].get('type', "tensorboard")
+    if logger == "tensorboard":
+        tb_logger = init_tb_logger(opt['path']['experiments_root'])
+    elif logger == "wandb":
+        import wandb
+        wandb.login(project="fun_with_hypergraphs")
     tb_logger = init_tb_logger(opt['path']['experiments_root'])
     return tb_logger
 
@@ -86,7 +92,7 @@ def train_pipeline(root_path):
     logger.info(get_env_info())
     logger.info(dict2str(opt))
     # initialize tensorboard logger
-    tb_logger = init_tb_loggers(opt)
+    tb_logger = init_loggers(opt)
 
     # create train and validation dataloaders
     result = create_train_val_dataloader(opt, logger)

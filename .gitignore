@@ -134,3 +134,4 @@ results/
 
 # pycharm
 .idea/
+wandb/
