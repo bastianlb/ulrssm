@@ -220,7 +220,7 @@ class SingleShapeDataset(Dataset):
                 # For a sampled mesh, the vertices are already ordered.
                 # however, we still need gt_corr for some computations, like
                 # properly handling distance matrices
-                item['corr'] = np.arange(item['verts'].shape[0])
+                item['corr'] = torch.from_numpy(np.arange(item['verts'].shape[0]))
         
         # get geodesic distance matrix
         if self.return_dist:
@@ -236,7 +236,7 @@ class SingleShapeDataset(Dataset):
                 item['dist'] = item['dist'][self.sampled_indices, :][:, self.sampled_indices] #TODO:Here we still use mesh version to calculate the dist(also possible to change to pcd, but currently using mesh to calculate this)
                 # print('Sampled distance mat shape', item['dist'].shape)
         # print(item['corr'].shape)
-        
+
         if self.data_augmentation:
             if 'rotation' in self.data_augmentation.keys():
                 item['verts'] = self.rotation_augmentation(item['verts'])
@@ -265,12 +265,13 @@ class SingleShapeDataset(Dataset):
 
         return graph
     
+
     def rotation_augmentation(self, verts, rot_x=0, rot_y=90.0, rot_z=0):
         # random rotation
-        rotation_matrix = get_random_rotation(rot_x, rot_y, rot_z).repeat(verts.shape[0], 1, 1).to(verts.device)
-        verts = torch.bmm(verts, rotation_matrix.transpose(1, 2))
-        return verts
+        rotation_matrix = get_random_rotation(rot_x, rot_y, rot_z).to(verts.device)
+        return verts @ rotation_matrix.T
         
+
     def scale_augmentation(self, verts, scale_min=0.9, scale_max=1.1):
         # random scaling
         scales = [scale_min, scale_max]
@@ -278,6 +279,7 @@ class SingleShapeDataset(Dataset):
         verts = verts * scale.to(verts.device)
         return verts
     
+
     def translation_augmentation(self, verts, translate_range=(-0.1, 0.1)):
         # # Fix random seed for reproducibility
         # torch.manual_seed(42)
