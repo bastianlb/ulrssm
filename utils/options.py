@@ -109,10 +109,14 @@ def parse_options(root_path, is_train=True):
     parser = argparse.ArgumentParser()
     parser.add_argument('--opt', type=str, required=True, help='Path to option YAML file.')
     parser.add_argument('--data_root', type=str, required=False, help='global data_root, will be prepended to relative train/test/cache paths.')
+    parser.add_argument('--debug', action='store_true', help='Debug mode.')
 
     args = parser.parse_args()
     opt = parse(args.opt, root_path, is_train=is_train)
     global_data_root = args.data_root
+
+    if args.debug:
+        opt['datasets']['num_worker'] = 0
 
     if global_data_root is not None:
         print(f"Global root set, concatenating paths with {global_data_root}.")
