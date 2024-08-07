@@ -14,20 +14,8 @@ from datasets import build_dataloader, build_dataset
 from datasets.data_sampler import EnlargedSampler
 
 from models import build_model
-from ulrssm.utils import (AvgTimer, MessageLogger, get_env_info, get_root_logger,
-                   init_tb_logger)
+from ulrssm.utils import (AvgTimer, MessageLogger, get_env_info, get_root_logger)
 from ulrssm.utils.options import dict2str, parse_options
-
-
-def init_loggers(opt):
-    logger = opt['logger'].get('type', "tensorboard")
-    if logger == "tensorboard":
-        tb_logger = init_tb_logger(opt['path']['experiments_root'])
-    elif logger == "wandb":
-        import wandb
-        wandb.login(project="fun_with_hypergraphs")
-    tb_logger = init_tb_logger(opt['path']['experiments_root'])
-    return tb_logger
 
 
 def create_train_val_dataloader(opt, logger):
@@ -91,8 +79,6 @@ def train_pipeline(root_path):
     logger = get_root_logger(log_file=log_file)
     logger.info(get_env_info())
     logger.info(dict2str(opt))
-    # initialize tensorboard logger
-    tb_logger = init_loggers(opt)
 
     # create train and validation dataloaders
     result = create_train_val_dataloader(opt, logger)
@@ -103,7 +89,7 @@ def train_pipeline(root_path):
     model = build_model(opt)
 
     # create message logger (formatted outputs)
-    msg_logger = MessageLogger(opt, model.curr_iter, tb_logger)
+    msg_logger = MessageLogger(opt, model.curr_iter)
 
     # training
     logger.info(f'Start training from epoch: {model.curr_epoch}, iter: {model.curr_iter}')
@@ -148,7 +134,7 @@ def train_pipeline(root_path):
                 if opt.get('val') is not None and (model.curr_iter % opt['val']['val_freq'] == 0):
                     logger.info('Start validation.')
                     torch.cuda.empty_cache()
-                    model.validation(val_loader, tb_logger)
+                    model.validation(val_loader, msg_logger)
 
                 data_timer.start()
                 iter_timer.start()
@@ -168,12 +154,12 @@ def train_pipeline(root_path):
     logger.info(f'End of training. Time consumed: {consumed_time}')
     logger.info(f'Last Validation.')
     if opt.get('val') is not None:
-        model.validation(val_loader, tb_logger)
+        model.validation(val_loader, msg_logger)
     logger.info('Save the best model.')
     model.save_model(net_only=True, best=True)  # save the best model
 
-    if tb_logger:
-        tb_logger.close()
+    if msg_logger:
+        msg_logger.close()
 
 
 if __name__ == '__main__':
