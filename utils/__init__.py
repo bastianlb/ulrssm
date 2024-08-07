@@ -5,7 +5,6 @@ __all__ = [
     # logger.py
     'MessageLogger',
     'AvgTimer',
-    'init_tb_logger',
     'get_root_logger',
     'get_env_info',
     # misc.py
