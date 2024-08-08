@@ -177,6 +177,29 @@ class MessageLogger:
         if self.use_wandb:
             self.wandb.finish()
 
+    def add_scalar(self, tag, value, global_step):
+        if self.use_tb_logger:
+            self.tb_logger.add_scalar(tag, value, global_step=global_step)
+        if self.use_wandb:
+            self.wandb.log({tag: value}, step=global_step)
+
+    def add_scalars(self, main_tag, tag_scalar_dict, global_step):
+        if self.use_tb_logger:
+            self.tb_logger.add_scalars(main_tag, tag_scalar_dict, global_step=global_step)
+        if self.use_wandb:
+            self.wandb.log({f"{main_tag}/{k}": v for k, v in tag_scalar_dict.items()}, step=global_step)
+
+    def add_figure(self, tag, figure, global_step):
+        if self.use_tb_logger:
+            self.tb_logger.add_figure(tag, figure, global_step=global_step)
+        if self.use_wandb:
+            self.wandb.log({tag: self.wandb.Image(figure)}, step=global_step)
+
+    def add_image(self, tag, img_tensor, global_step):
+        if self.use_tb_logger:
+            self.tb_logger.add_image(tag, img_tensor, global_step=global_step)
+        if self.use_wandb:
+            self.wandb.log({tag: self.wandb.Image(img_tensor)}, step=global_step)
 
 
 def get_root_logger(logger_name='root_logger', log_file=None, log_level=logging.INFO):
