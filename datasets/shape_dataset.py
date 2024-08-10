@@ -239,11 +239,12 @@ class SingleShapeDataset(Dataset):
         
         if self.data_augmentation:
             if 'rotation' in self.data_augmentation.keys():
-                item['verts'] = self.rotation_augmentation(item['verts'])
+                item['verts'] = self.rotation_augmentation(item['verts'].unsqueeze(dim=0))
             if 'scale' in self.data_augmentation.keys():
                 item['verts'] = self.scale_augmentation(item['verts'])
             if 'translation' in self.data_augmentation.keys():
                 item['verts'] = self.translation_augmentation(item['verts'])
+            item['verts'] = item['verts'].squeeze(dim=0)
         return item
 
     def __len__(self):
@@ -442,6 +443,9 @@ class PairShapeDataset(Dataset):
         assert isinstance(dataset, SingleShapeDataset), f'Invalid input data type of dataset: {type(dataset)}'
         self.dataset = dataset
         self.combinations = list(product(range(len(dataset)), repeat=2))
+        # import random
+        # random.seed(42)
+        # self.combinations = random.sample(self.combinations, 100)
 
     def __getitem__(self, index):
         # get index

@@ -133,10 +133,10 @@ def parse_options(root_path, is_train=True):
     use_LBO = basis == 'LBO'
     use_graph_laplacian_DINO = (basis == 'GRAPH_LAPLACIAN')
 
-    if return_gl_train != use_graph_laplacian_DINO:
+    if return_gl_train != use_graph_laplacian_DINO and return_gl_train:
         raise ValueError("Error: 'return_gl' in train_dataset and 'use_graph_laplacian_DINO' in basis must be the same")
 
-    if return_gl_test != use_graph_laplacian_DINO:
+    if return_gl_test != use_graph_laplacian_DINO and return_gl_test:
         raise ValueError("Error: 'return_gl' in test_dataset and 'use_graph_laplacian_DINO' in basis must be the same")
 
 

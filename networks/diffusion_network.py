@@ -364,8 +364,8 @@ class DiffusionNet(nn.Module):
             elif self.input_type == 'wks':
                 x = compute_wks_autoscale(evals, evecs, mass)
             elif self.input_type == 'xyz':
-                if self.training:
-                    verts = data_augmentation(verts)
+                # if self.training:
+                #     verts = data_augmentation(verts)
                 x = verts
 
         # Apply the first linear layer

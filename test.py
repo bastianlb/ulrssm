@@ -1,9 +1,14 @@
 from os import path as osp
+import sys
+import os
+
+# Add the parent directory to the system path for absolute namespacing
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from datasets import build_dataloader, build_dataset
 from models import build_model
-from utils import get_env_info, get_root_logger, get_time_str
-from utils.options import dict2str, parse_options
+from ulrssm.utils import get_env_info, get_root_logger, get_time_str
+from ulrssm.utils.options import dict2str, parse_options
 
 
 def test_pipeline(root_path):
@@ -19,6 +24,7 @@ def test_pipeline(root_path):
     # create test dataset and dataloader
     test_loaders = []
     for _, dataset_opt in sorted(opt['datasets'].items()):
+        print(dataset_opt)
         test_set = build_dataset(dataset_opt)
         test_loader = build_dataloader(
             test_set, dataset_opt, phase='val', num_gpu=opt['num_gpu'], dist=opt['dist'], sampler=None, seed=opt['manual_seed'])

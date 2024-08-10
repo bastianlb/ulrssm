@@ -518,7 +518,7 @@ class BaseModel:
 
             net_state_dict = networks_state_dict[name]
             # remove unnecessary 'module.'
-            net_state_dict = {k.replace('module.', ''): v for k, v in net_state_dict.items()}
+            # net_state_dict = {k.replace('module.', ''): v for k, v in net_state_dict.items()}
 
             self._get_bare_net(self.networks[name]).load_state_dict(net_state_dict)
 
