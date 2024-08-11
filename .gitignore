@@ -131,6 +131,7 @@ dmypy.json
 # experiments and results
 experiments/
 results/
+experiments-cached/
 
 # pycharm
 .idea/

@@ -92,6 +92,7 @@ class MessageLogger:
 
         if self.use_tb_logger:
             self.log_dir = opt['path']['experiments_root']
+            self.init_tb_logger()    
         
         self.log_buffer = defaultdict(list)
 
@@ -108,7 +109,7 @@ class MessageLogger:
             self.use_tb_logger = True
 
     @master_only
-    def _init_tb_logger(self):
+    def init_tb_logger(self):
         from torch.utils.tensorboard import SummaryWriter
         self.tb_logger = SummaryWriter(log_dir=self.log_dir)
 
