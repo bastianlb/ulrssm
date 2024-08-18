@@ -134,37 +134,37 @@ class FMNetBase(BaseModel):
 
         # if self.non_isometric:
         # Here we just only use nn_query to get the correspondance for a fair comparision
-        feat_x = F.normalize(feat_x, dim=-1, p=2)
-        feat_y = F.normalize(feat_y, dim=-1, p=2)
+        # feat_x = F.normalize(feat_x, dim=-1, p=2)
+        # feat_y = F.normalize(feat_y, dim=-1, p=2)
 
-        # nearest neighbour query
-        p2p = nn_query(feat_x, feat_y).squeeze()
-        # print('!!!!', p2p.shape)
+        # # nearest neighbour query
+        # p2p = nn_query(feat_x, feat_y).squeeze()
+        # # print('!!!!', p2p.shape)
 
-        # compute Pyx from functional map, here the Cxy and Pyx are not used in the next step, only p2p is used. So we use the defult settings here
-        Cxy = evecs_trans_y @ evecs_x[p2p]
-        Pyx = evecs_y @ Cxy @ evecs_trans_x
+        # # compute Pyx from functional map, here the Cxy and Pyx are not used in the next step, only p2p is used. So we use the defult settings here
+        # Cxy = evecs_trans_y @ evecs_x[p2p]
+        # Pyx = evecs_y @ Cxy @ evecs_trans_x
 
-        # if self.non_isometric:
-        #     feat_x = F.normalize(feat_x, dim=-1, p=2)
-        #     feat_y = F.normalize(feat_y, dim=-1, p=2)
-        #
-        #     # nearest neighbour query
-        #     p2p = nn_query(feat_x, feat_y).squeeze()
-        #
-        #     # compute Pyx from functional map
-        #     Cxy = evecs_trans_y @ evecs_x[p2p]
-        #     Pyx = evecs_y @ Cxy @ evecs_trans_x
-        # else:
-        #     # compute Pxy
-        #     Pyx = self.compute_permutation_matrix(feat_y, feat_x, bidirectional=False).squeeze()
-        #     Cxy = evecs_trans_y @ (Pyx @ evecs_x)
-        #
-        #     # convert functional map to point-to-point map
-        #     p2p = fmap2pointmap(Cxy, evecs_x, evecs_y)
-        #
-        #     # compute Pyx from functional map
-        #     Pyx = evecs_y @ Cxy @ evecs_trans_x
+        if self.non_isometric:
+            feat_x = F.normalize(feat_x, dim=-1, p=2)
+            feat_y = F.normalize(feat_y, dim=-1, p=2)
+        
+            # nearest neighbour query
+            p2p = nn_query(feat_x, feat_y).squeeze()
+        
+            # compute Pyx from functional map
+            Cxy = evecs_trans_y @ evecs_x[p2p]
+            Pyx = evecs_y @ Cxy @ evecs_trans_x
+        else:
+            # compute Pxy
+            Pyx = self.compute_permutation_matrix(feat_y, feat_x, bidirectional=False).squeeze()
+            Cxy = evecs_trans_y @ (Pyx @ evecs_x)
+        
+            # convert functional map to point-to-point map
+            p2p = fmap2pointmap(Cxy, evecs_x, evecs_y)
+        
+            # compute Pyx from functional map
+            Pyx = evecs_y @ Cxy @ evecs_trans_x
 
         # finish record
         timer.record()
